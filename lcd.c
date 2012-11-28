@@ -465,7 +465,7 @@ main(void)
 		{
 			usb_serial_putchar(c);
 			if (c == '+')
-				OCR1A++;
+				OCR1A += 8;
 			lcd_write(c);
 		}
 
