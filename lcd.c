@@ -1,8 +1,16 @@
 /**
- * \file MDLS-4022 LCD driver.
+ * \file HD44102 driver
  *
  * Preparation for Model 100 retrofit
  *
+ * CS1 is tied to ground on all chips.
+ * CS2 is exposed per chip
+ * CS3 is common to all chips, named CS1 on schematic
+ * 
+ * To select a chip, CS2 and CS3 must be high
+ *
+ * In write mode, data is latched on the fall of LCD_EN
+ * LCD_DI high == data, low == command
  */
 
 #include <avr/io.h>
@@ -18,14 +26,16 @@
 
 #define LED		0xD6
 
-#define LCD_VO		0xB5 // Analog voltage to control contrast
-#define LCD_RS		0xF0
-#define LCD_RW		0xF1
-#define LCD_EN		0xD1
-#define LCD_D4		0xF4
-#define LCD_D5		0xF5
-#define LCD_D6		0xF6
-#define LCD_D7		0xF7
+#define LCD_V2		0xB6 // 4, Analog voltage to control contrast
+#define LCD_CS20	0xB5 // 16
+#define LCD_RESET	0xB4 // 17
+#define LCD_CS1		0xB3 // 18
+#define LCD_EN		0xB2 // 19
+#define LCD_RW		0xB1 // 20
+#define LCD_DI		0xB7 // 21
+
+#define LCD_DATA_PORT	PORTD // 22-29
+#define LCD_DATA_DDR	DDRD
 
 
 void send_str(const char *s);
@@ -276,22 +286,11 @@ lcd_command(
 	const uint8_t rs
 )
 {
-	out(LCD_RS, rs);
+	out(LCD_DI, rs);
 
-	out(LCD_D7, byte & 0x80);
-	out(LCD_D6, byte & 0x40);
-	out(LCD_D5, byte & 0x20);
-	out(LCD_D4, byte & 0x10);
 	out(LCD_EN, 1);
-	_delay_us(10);
-	out(LCD_EN, 0);
-
-	out(LCD_D7, byte & 0x08);
-	out(LCD_D6, byte & 0x04);
-	out(LCD_D5, byte & 0x02);
-	out(LCD_D4, byte & 0x01);
-	out(LCD_EN, 1);
-	_delay_us(10);
+	LCD_DATA_PORT = byte;
+	_delay_us(1);
 	out(LCD_EN, 0);
 
 	// Rate limit if this is a command, not a text write
@@ -315,38 +314,36 @@ lcd_contrast(
 	uint8_t x
 )
 {
-	OCR1A = x;
+	OCR1B = x;
 }
 
 static void
 lcd_init(void)
 {
-	ddr(LCD_D4, 1);
-	ddr(LCD_D5, 1);
-	ddr(LCD_D6, 1);
-	ddr(LCD_D7, 1);
-	ddr(LCD_RS, 1);
+	LCD_DATA_PORT = 0x00;
+	LCD_DATA_DDR = 0xFF;
+
+	ddr(LCD_DI, 1);
 	ddr(LCD_RW, 1);
 	ddr(LCD_EN, 1);
-	ddr(LCD_VO, 1);
+	ddr(LCD_V2, 1);
+	ddr(LCD_DI, 1);
 
-	out(LCD_D4, 0);
-	out(LCD_D5, 0);
-	out(LCD_D6, 0);
-	out(LCD_D7, 0);
-	out(LCD_RS, 0);
+	out(LCD_DI, 0);
 	out(LCD_RW, 0);
 	out(LCD_EN, 0);
+	out(LCD_V2, 0);
+	out(LCD_DI, 0);
 
-	// PB5, OC1A is used to control brightness via PWM
+	// OC1B is used to control brightness via PWM
 	// Configure OC1x in fast-PWM mode, 10-bit
 	sbi(TCCR1B, WGM12);
 	sbi(TCCR1A, WGM11);
 	sbi(TCCR1A, WGM10);
 
 	// Configure output mode to clear on match, set at top
-	sbi(TCCR1A, COM1A1);
-	cbi(TCCR1A, COM1A0);
+	sbi(TCCR1A, COM1B1);
+	cbi(TCCR1A, COM1B0);
 
 	// Configure clock 1 at clk/1
 	cbi(TCCR1B, CS12);
@@ -357,36 +354,24 @@ lcd_init(void)
 	
 	_delay_ms(20);
 
-	for (int i = 0 ; i < 3 ; i++)
-	{
-		// Enable the display
-		out(LCD_D7, 0);
-		out(LCD_D6, 0);
-		out(LCD_D5, 1); // enable
-		out(LCD_D4, 1); // 8-bit mode, ignored for now
+	// Raise the reset line, to bring the chips online
+	out(LCD_RESET, 1);
 
-		out(LCD_EN, 1);
-		_delay_us(10);
-		out(LCD_EN, 0);
-		_delay_ms(5);
-	}
+	// Raise the master select line, since we always want to talk to
+	// all chips.
+	out(LCD_CS1, 1);
 
-	// Enable the display
-	out(LCD_D7, 0);
-	out(LCD_D6, 0);
-	out(LCD_D5, 1); // enable
-	out(LCD_D4, 0); // 4-bit mode, for real this time
+	// Leave RW low to indicate that we will be writing to the chip
+	out(LCD_RW, 0);
 
-	out(LCD_EN, 1);
-	_delay_us(10);
-	out(LCD_EN, 0);
-	_delay_ms(5);
+	// Turn on display
+	lcd_command(0x39, 0);
 
-	// We should be alive in 4-bit mode now.
-	lcd_command(0x28, 0); // 4 bit, 2 line, normal font
-	lcd_command(0x01, 0); // clear and home
-	lcd_command(0x06, 0); // cursor moves to the right
-	lcd_command(0x0C, 0); // turn on display
+	// Up mode
+	lcd_command(0x3A, 0);
+
+	// Start at location 0
+	lcd_command(0x00, 0);
 }
 
 
@@ -411,16 +396,6 @@ main(void)
 	out(LED, 1);
 
 	lcd_init();
-
-	lcd_write('M');
-	lcd_write('o');
-	lcd_write('d');
-	lcd_write('e');
-	lcd_write('l');
-	lcd_write('1');
-	lcd_write('0');
-	lcd_write('0');
-	lcd_write('!');
 
         // Timer 0 is used for a 64 Hz control loop timer.
         // Clk/256 == 62.5 KHz, count up to 125 == 500 Hz
@@ -457,6 +432,7 @@ main(void)
 	usb_serial_flush_input();
 
 	send_str(PSTR("lcd model100\r\n"));
+	uint8_t i = 0;
 
 	while (1)
 	{
@@ -465,13 +441,13 @@ main(void)
 		{
 			usb_serial_putchar(c);
 			if (c == '+')
-				OCR1A += 8;
-			lcd_write(c);
+				OCR1B += 8;
 		}
 
 		if (bit_is_clear(TIFR0, OCF0A))
 			continue;
 
 		sbi(TIFR0, OCF0A); // reset the bit
+		lcd_write(i++);
 	}
 }
