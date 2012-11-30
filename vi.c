@@ -5,6 +5,16 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+#include <avr/io.h>
+#include <util/delay.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include "usb_serial.h"
+
+#define CONFIG_AVR
+
 
 /*
  * Things To Do:
@@ -31,6 +41,66 @@
 //config:	  you may wish to use something else.
 //config:
 //config:config FEATURE_VI_MAX_LEN
+#define CONFIG_FEATURE_VI_MAX_LEN 60
+#define TRUE 1
+#define FALSE 0
+typedef uint8_t smallint;
+#define STDIN_FILENO 1
+
+/* "Keycodes" that report an escape sequence.
+ * We use something which fits into signed char,
+ * yet doesn't represent any valid Unicode character.
+ * Also, -1 is reserved for error indication and we don't use it. */
+enum {
+	KEYCODE_UP       =  -2,
+	KEYCODE_DOWN     =  -3,
+	KEYCODE_RIGHT    =  -4,
+	KEYCODE_LEFT     =  -5,
+	KEYCODE_HOME     =  -6,
+	KEYCODE_END      =  -7,
+	KEYCODE_INSERT   =  -8,
+	KEYCODE_DELETE   =  -9,
+	KEYCODE_PAGEUP   = -10,
+	KEYCODE_PAGEDOWN = -11,
+	// -12 is reserved for Alt/Ctrl/Shift-TAB
+#if 0
+	KEYCODE_FUN1     = -13,
+	KEYCODE_FUN2     = -14,
+	KEYCODE_FUN3     = -15,
+	KEYCODE_FUN4     = -16,
+	KEYCODE_FUN5     = -17,
+	KEYCODE_FUN6     = -18,
+	KEYCODE_FUN7     = -19,
+	KEYCODE_FUN8     = -20,
+	KEYCODE_FUN9     = -21,
+	KEYCODE_FUN10    = -22,
+	KEYCODE_FUN11    = -23,
+	KEYCODE_FUN12    = -24,
+#endif
+	/* Be sure that last defined value is small enough
+	 * to not interfere with Alt/Ctrl/Shift bits.
+	 * So far we do not exceed -31 (0xfff..fffe1),
+	 * which gives us three upper bits in LSB to play with.
+	 */
+	//KEYCODE_SHIFT_TAB  = (-12)         & ~0x80,
+	//KEYCODE_SHIFT_...  = KEYCODE_...   & ~0x80,
+	//KEYCODE_CTRL_UP    = KEYCODE_UP    & ~0x40,
+	//KEYCODE_CTRL_DOWN  = KEYCODE_DOWN  & ~0x40,
+	KEYCODE_CTRL_RIGHT = KEYCODE_RIGHT & ~0x40,
+	KEYCODE_CTRL_LEFT  = KEYCODE_LEFT  & ~0x40,
+	//KEYCODE_ALT_UP     = KEYCODE_UP    & ~0x20,
+	//KEYCODE_ALT_DOWN   = KEYCODE_DOWN  & ~0x20,
+	KEYCODE_ALT_RIGHT  = KEYCODE_RIGHT & ~0x20,
+	KEYCODE_ALT_LEFT   = KEYCODE_LEFT  & ~0x20,
+
+	KEYCODE_CURSOR_POS = -0x100, /* 0xfff..fff00 */
+	/* How long is the longest ESC sequence we know?
+	 * We want it big enough to be able to contain
+	 * cursor position sequence "ESC [ 9999 ; 9999 R"
+	 */
+	KEYCODE_BUFFER_SIZE = 16
+};
+
 //config:	int "Maximum screen width in vi"
 //config:	range 256 16384
 //config:	default 4096
@@ -153,7 +223,7 @@
 //usage:	)
 //usage:     "\n	-H	List available features"
 
-#include "libbb.h"
+//#include "libbb.h"
 /* Should be after libbb.h: on some systems regex.h needs sys/types.h: */
 #if ENABLE_FEATURE_VI_REGEX_SEARCH
 # include <regex.h>
@@ -328,7 +398,9 @@ struct globals {
 #if ENABLE_FEATURE_VI_USE_SIGNALS
 	sigjmp_buf restart;     // catch_sig()
 #endif
+#ifndef CONFIG_AVR
 	struct termios term_orig, term_vi; // remember what the cooked mode was
+#endif
 #if ENABLE_FEATURE_VI_COLON
 	char *initial_cmds[3];  // currently 2 entries, NULL terminated
 #endif
@@ -348,7 +420,12 @@ struct globals {
 
 	char scr_out_buf[MAX_SCR_COLS + MAX_TABSTOP * 2];
 };
+
+#ifdef CONFIG_AVR
+static struct globals G;
+#else
 #define G (*ptr_to_globals)
+#endif
 #define text           (G.text          )
 #define text_size      (G.text_size     )
 #define end            (G.end           )
@@ -527,14 +604,63 @@ static int crashme = 0;
 #endif
 
 
+#ifdef CONFIG_AVR
+static void
+write1(
+	const char * buf
+)
+{
+	uint8_t len = 0;
+	while (buf[len])
+		len++;
+	usb_serial_write((const void*) buf, len);
+}
+#else
 static void write1(const char *out)
 {
 	fputs(out, stdout);
 }
+#endif
 
-int vi_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-int vi_main(int argc, char **argv)
+
+#ifdef CONFIG_AVR
+static void
+avr_setup(void)
 {
+	// set for 16 MHz clock
+#define CPU_PRESCALE(n) (CLKPR = 0x80, CLKPR = (n))
+	CPU_PRESCALE(0);
+
+	// initialize the USB, and then wait for the host
+	// to set configuration.  If the Teensy is powered
+	// without a PC connected to the USB port, this 
+	// will wait forever.
+	usb_init();
+
+	while (!usb_configured())
+		;
+
+	_delay_ms(1000);
+
+	// wait for the user to run their terminal emulator program
+	// which sets DTR to indicate it is ready to receive.
+	while (!(usb_serial_get_control() & USB_SERIAL_DTR))
+		;
+
+	// discard anything that was received prior.  Sometimes the
+	// operating system or other software will send a modem
+	// "AT command", which can still be buffered.
+	usb_serial_flush_input();
+}
+#endif
+
+
+//int vi_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int main(int argc, char **argv)
+{
+#ifdef CONFIG_AVR
+	usb_init();
+#else
 	int c;
 
 	INIT_G();
@@ -598,12 +724,14 @@ int vi_main(int argc, char **argv)
 	//----- This is the main file handling loop --------------
 	save_argc = argc;
 	optind = 0;
+#endif
+
 	// "Save cursor, use alternate screen buffer, clear screen"
 	write1("\033[?1049h");
 	while (1) {
-		edit_file(argv[optind]); /* param might be NULL */
-		if (++optind >= argc)
-			break;
+		edit_file(NULL); /* param might be NULL */
+		//if (++optind >= argc)
+			//break;
 	}
 	// "Use normal screen buffer, restore cursor"
 	write1("\033[?1049l");
@@ -616,6 +744,7 @@ int vi_main(int argc, char **argv)
 /* will also update current_filename */
 static int init_text_buffer(char *fn)
 {
+#ifndef CONFIG_AVR
 	int rc;
 	int size = file_size(fn);	// file size. -1 means does not exist.
 
@@ -642,7 +771,51 @@ static int init_text_buffer(char *fn)
 	memset(mark, 0, sizeof(mark));
 #endif
 	return rc;
+#else
+static char storage_buf[3000];
+	text_size = sizeof(storage_buf);
+	screenbegin = dot = end = text = storage_buf;
+	current_filename = "FOO";
+
+	// file dont exist. Start empty buf with dummy line
+	char_insert(text, '\n');
+	file_modified = 0;
+	last_file_modified = -1;
+	return 0;
+#endif
 }
+
+#ifdef CONFIG_AVR
+static int
+read_key(
+	int fd_unused,
+	char * buffer,
+	int timeout
+)
+{
+	while (1)
+	{
+		int c = usb_serial_getchar();
+		if (c == -1)
+			continue;
+
+		//buffer[-1] = 0;
+		return c;
+	}
+
+	return 0;
+}
+
+
+static inline void
+bb_putchar(
+	char c
+)
+{
+	usb_serial_putchar(c);
+}
+#endif
+	
 
 #if ENABLE_FEATURE_VI_WIN_RESIZE
 static int query_screen_dimensions(void)
@@ -672,6 +845,7 @@ static void edit_file(char *fn)
 	rawmode();
 	rows = 24;
 	columns = 80;
+#ifndef CONFIG_AVR
 	IF_FEATURE_VI_ASK_TERMINAL(G.get_rowcol_error =) query_screen_dimensions();
 #if ENABLE_FEATURE_VI_ASK_TERMINAL
 	if (G.get_rowcol_error /* TODO? && no input on stdin */) {
@@ -689,6 +863,7 @@ static void edit_file(char *fn)
 				rows = MAX_SCR_ROWS;
 		}
 	}
+#endif
 #endif
 	new_screen(rows, columns);	// get memory for virtual screen
 	init_text_buffer(fn);
@@ -1380,7 +1555,7 @@ static int next_tabstop(int col)
 }
 
 //----- Synchronize the cursor to Dot --------------------------
-static NOINLINE void sync_cursor(char *d, int *row, int *col)
+static void sync_cursor(char *d, int *row, int *col)
 {
 	char *beg_cur;	// begin and end of "d" line
 	char *tp;
@@ -1687,9 +1862,18 @@ static char *new_screen(int ro, int co)
 {
 	int li;
 
+#ifndef CONFIG_AVR
 	free(screen);
 	screensize = ro * co + 8;
 	screen = xmalloc(screensize);
+#else
+// no resizing..
+	static uint8_t screen_buf[80*24 + 8];
+	ro = 24;
+	co = 80;
+	screensize = ro * co + 8;
+	screen = screen_buf;
+#endif
 	// initialize the new screen. assume this will be a empty file.
 	screen_erase();
 	//   non-existent text[] lines start with a tilde (~).
@@ -2073,6 +2257,7 @@ static uintptr_t text_hole_make(char *p, int size)	// at "p", make a 'size' byte
 		return bias;
 	end += size;		// adjust the new END
 	if (end >= (text + text_size)) {
+#ifndef CONFIG_AVR
 		char *new_text;
 		text_size += end - (text + text_size) + 10240;
 		new_text = xrealloc(text, text_size);
@@ -2090,6 +2275,14 @@ static uintptr_t text_hole_make(char *p, int size)	// at "p", make a 'size' byte
 		}
 #endif
 		text = new_text;
+#else
+		// we should abort.
+		while(1);
+		{
+			usb_serial_putchar('&');
+			_delay_ms(1000);
+		}
+#endif
 	}
 	memmove(p + size, p, end - size - p);
 	memset(p, ' ', size);	// clear new hole
@@ -2318,6 +2511,7 @@ static char *swap_context(char *p) // goto new context for '' command make this 
 //----- Set terminal attributes --------------------------------
 static void rawmode(void)
 {
+#ifndef CONFIG_AVR
 	tcgetattr(0, &term_orig);
 	term_vi = term_orig;
 	term_vi.c_lflag &= (~ICANON & ~ECHO);	// leave ISIG on - allow intr's
@@ -2327,12 +2521,15 @@ static void rawmode(void)
 	term_vi.c_cc[VTIME] = 0;
 	erase_char = term_vi.c_cc[VERASE];
 	tcsetattr_stdin_TCSANOW(&term_vi);
+#endif
 }
 
 static void cookmode(void)
 {
+#ifndef CONFIG_AVR
 	fflush_all();
 	tcsetattr_stdin_TCSANOW(&term_orig);
+#endif
 }
 
 #if ENABLE_FEATURE_VI_USE_SIGNALS
@@ -2385,11 +2582,22 @@ static void catch_sig(int sig)
 
 static int mysleep(int hund)	// sleep for 'hund' 1/100 seconds or stdin ready
 {
+#ifndef CONFIG_AVR
 	struct pollfd pfd[1];
 
 	pfd[0].fd = STDIN_FILENO;
 	pfd[0].events = POLLIN;
 	return safe_poll(pfd, 1, hund*10) > 0;
+#else
+	int16_t x;
+	for (x = 0 ; x < hund * 100 ; x++)
+	{
+		if (usb_serial_available())
+			return 1;
+	}
+
+	return 0;
+#endif
 }
 
 //----- IO Routines --------------------------------------------
@@ -2397,13 +2605,17 @@ static int readit(void) // read (maybe cursor) key from stdin
 {
 	int c;
 
+#ifndef CONFIG_AVR
 	fflush_all();
+#endif
 	c = read_key(STDIN_FILENO, readbuffer, /*timeout off:*/ -2);
+#ifndef CONFIG_AVR
 	if (c == -1) { // EOF/error
 		go_bottom_and_clear_to_eol();
 		cookmode(); // terminal to "cooked"
 		bb_error_msg_and_die("can't read user input");
 	}
+#endif
 	return c;
 }
 
@@ -2485,6 +2697,9 @@ static char *get_input_line(const char *prompt)
 
 static int file_size(const char *fn) // what is the byte size of "fn"
 {
+#ifdef CONFIG_AVR
+	return -1;
+#else
 	struct stat st_buf;
 	int cnt;
 
@@ -2492,11 +2707,15 @@ static int file_size(const char *fn) // what is the byte size of "fn"
 	if (fn && stat(fn, &st_buf) == 0)	// see if file exists
 		cnt = (int) st_buf.st_size;
 	return cnt;
+#endif
 }
 
 // might reallocate text[]!
 static int file_insert(const char *fn, char *p, int update_ro_status)
 {
+#ifdef CONFIG_AVR
+	return -1;
+#else
 	int cnt = -1;
 	int fd, size;
 	struct stat statbuf;
@@ -2549,10 +2768,14 @@ static int file_insert(const char *fn, char *p, int update_ro_status)
 	}
 #endif
 	return cnt;
+#endif
 }
 
 static int file_write(char *fn, char *first, char *last)
 {
+#ifdef CONFIG_AVR
+	return -1;
+#else
 	int fd, cnt, charcnt;
 
 	if (fn == 0) {
@@ -2577,6 +2800,7 @@ static int file_write(char *fn, char *first, char *last)
 	}
 	close(fd);
 	return charcnt;
+#endif
 }
 
 //----- Terminal Drawing ---------------------------------------
@@ -2699,7 +2923,9 @@ static void show_status_line(void)
 		}
 		place_cursor(crow, ccol);  // put cursor back in correct place
 	}
+#ifndef CONFIG_AVR
 	fflush_all();
+#endif
 }
 
 //----- format the status buffer, the bottom line of screen ------
@@ -2782,7 +3008,7 @@ static void not_implemented(const char *s)
 // show file status on status line
 static int format_edit_status(void)
 {
-	static const char cmd_mode_indicator[] ALIGN1 = "-IR-";
+	static const char cmd_mode_indicator[] = "-IR-";
 
 #define tot format_edit_status__tot
 
@@ -2920,11 +3146,13 @@ static void refresh(int full_screen)
 	int li, changed;
 	char *tp, *sp;		// pointer into text[] and screen[]
 
+#ifndef CONFIG_AVR
 	if (ENABLE_FEATURE_VI_WIN_RESIZE IF_FEATURE_VI_ASK_TERMINAL(&& !G.get_rowcol_error) ) {
 		unsigned c = columns, r = rows;
 		query_screen_dimensions();
 		full_screen |= (c - columns) | (r - rows);
 	}
+#endif
 	sync_cursor(dot, &crow, &ccol);	// where cursor will be (on "dot")
 	tp = screenbegin;	// index into text[] of top line
 
@@ -3465,7 +3693,13 @@ static void do_cmd(int c)
 			cnt = file_write(current_filename, text, end - 1);
 			if (cnt < 0) {
 				if (cnt == -1)
+				{
+#ifndef CONFIG_AVR
 					status_line_bold("Write error: %s", strerror(errno));
+#else
+					status_line_bold("Write error: %d", -1);
+#endif
+				}
 			} else {
 				file_modified = 0;
 				last_file_modified = -1;
@@ -3666,6 +3900,7 @@ static void do_cmd(int c)
 			break;
 		}
 		if (file_modified) {
+#ifndef CONFIG_AVR
 			if (ENABLE_FEATURE_VI_READONLY && readonly_mode) {
 				status_line_bold("\"%s\" File is read only", current_filename);
 				break;
@@ -3677,6 +3912,7 @@ static void do_cmd(int c)
 			} else if (cnt == (end - 1 - text + 1)) {
 				editing = 0;
 			}
+#endif
 		} else {
 			editing = 0;
 		}
