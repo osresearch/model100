@@ -193,8 +193,26 @@ lcd_char(
 )
 {
 	lcd_select(x * 6, y * 8, 1);
-	lcd_command(((y & 3) << 6) | ((x & 7) * 6), 0);
-	//lcd_command(0x00, 0);
+	uint8_t col = 0;
+	if (x < 8)
+		col = (x - 0);
+	else
+	if (x < 16)
+		col = (x - 8);
+	else
+	if (x < 24)
+		col = (x - 16);
+	else
+	if (x < 32)
+		col = (x - 24);
+	else
+	if (x < 40)
+		col = (x - 32);
+	else
+		return;
+
+	uint8_t row = (y % 8);
+	lcd_command(row << 6 | (col*6), 0);
 
 	const char * f = font[c];
 

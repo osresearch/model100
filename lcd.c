@@ -81,27 +81,6 @@ void send_str(const char *s)
 }
 
 
-#if 0
-static uint8_t
-lcd_read(void)
-{
-	out(LCD_DI, rs);
-	ddr(LCD_DATA_PORT, 0); // all in
-	out(LCD_RW, 1); // read
-
-	_delay_us(10);
-	out(LCD_EN, 1);
-	_delay_us(100);
-	out(LCD_EN, 0);
-	
-
-	out(LCD_EN, 1);
-	LCD_DATA_PORT = byte;
-	_delay_us(10);
-	out(LCD_EN, 0);
-#endif
-
-
 static uint8_t
 lcd_command(
 	const uint8_t byte,
@@ -114,23 +93,23 @@ lcd_command(
 
 	out(LCD_EN, 1);
 	LCD_DATA_PORT = byte;
-	_delay_us(100);
+	_delay_us(1);
 	out(LCD_EN, 0);
 
 	// value has been sent, wait a tick, read the status
-	_delay_us(50);
+	_delay_us(5);
 	LCD_DATA_PORT = 0x00; // no pull ups
 	LCD_DATA_DDR = 0x00;
-	_delay_us(25);
+	_delay_us(1);
 	out(LCD_RW, 1); // read
 	out(LCD_DI, 0); // status command
 
-	_delay_us(25);
+	_delay_us(2);
 	
 	out(LCD_EN, 1);
 	_delay_us(1);
 	uint8_t rc = LCD_DATA_PIN;
-	_delay_us(100);
+	_delay_us(1);
 	out(LCD_EN, 0);
 
 	out(LCD_RW, 0); // read
@@ -414,10 +393,10 @@ main(void)
 		lcd_display(i, j, x++);
 #else
 		lcd_char(i, j, x);
-		x = (x + 1) & 0x7F;
 		if (i++ == 40)
 		{
 			i = 0;
+			x = (x + 1) & 0x7F;
 			if (j++ == 8)
 				j = 0;
 		}
