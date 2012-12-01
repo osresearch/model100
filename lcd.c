@@ -27,7 +27,6 @@
 #define LED		0xD6
 
 #define LCD_V2		0xB6 // 4, Analog voltage to control contrast
-#define LCD_CS20	0xB5 // 16
 #define LCD_RESET	0xB4 // 17
 #define LCD_CS1		0xB3 // 18
 #define LCD_EN		0xB2 // 19
@@ -39,6 +38,16 @@
 #define LCD_DATA_PIN	PIND
 #define LCD_DATA_DDR	DDRD
 
+#define LCD_CS24	0xF7 // 16
+#define LCD_CS23	0xF6 // 16
+#define LCD_CS29	0xF5 // 16
+#define LCD_CS22	0xF4 // 16
+#define LCD_CS28	0xF3 // 16
+#define LCD_CS21	0xF2 // 16
+#define LCD_CS27	0xF1 // 16
+#define LCD_CS20	0xF0 // 16
+#define LCD_CS26	0xE6 // 16
+#define LCD_CS25	0xE7 // 16
 
 void send_str(const char *s);
 uint8_t recv_str(char *buf, uint8_t size);
@@ -146,6 +155,27 @@ lcd_contrast(
 	OCR1B = x;
 }
 
+
+static void
+lcd_on(
+	const uint8_t pin
+)
+{
+	out(pin, 1);
+
+	// Turn on display
+	lcd_command(0x39, 0);
+
+	// Up mode
+	lcd_command(0x3B, 0);
+
+	// Start at location 0
+	lcd_command(0x00, 0);
+
+	out(pin, 0);
+}
+
+
 static void
 lcd_init(void)
 {
@@ -159,6 +189,15 @@ lcd_init(void)
 	out(LCD_DI, 0);
 	out(LCD_CS1, 0);
 	out(LCD_CS20, 0);
+	out(LCD_CS21, 0);
+	out(LCD_CS22, 0);
+	out(LCD_CS23, 0);
+	out(LCD_CS24, 0);
+	out(LCD_CS25, 0);
+	out(LCD_CS26, 0);
+	out(LCD_CS27, 0);
+	out(LCD_CS28, 0);
+	out(LCD_CS29, 0);
 	out(LCD_RESET, 0);
 	out(LCD_BZ, 0);
 
@@ -167,9 +206,19 @@ lcd_init(void)
 	ddr(LCD_EN, 1);
 	ddr(LCD_V2, 1);
 	ddr(LCD_CS1, 1);
-	ddr(LCD_CS20, 1);
 	ddr(LCD_RESET, 1);
 	ddr(LCD_BZ, 1);
+
+	ddr(LCD_CS20, 1);
+	ddr(LCD_CS21, 1);
+	ddr(LCD_CS22, 1);
+	ddr(LCD_CS23, 1);
+	ddr(LCD_CS24, 1);
+	ddr(LCD_CS25, 1);
+	ddr(LCD_CS26, 1);
+	ddr(LCD_CS27, 1);
+	ddr(LCD_CS28, 1);
+	ddr(LCD_CS29, 1);
 
 
 	// OC1B is used to control brightness via PWM
@@ -197,16 +246,83 @@ lcd_init(void)
 	// Raise the master select line, since we always want to talk to
 	// all chips.
 	out(LCD_CS1, 1);
-	out(LCD_CS20, 1);
 
-	// Turn on display
-	lcd_command(0x39, 0);
+	lcd_on(LCD_CS20);
+	lcd_on(LCD_CS21);
+	lcd_on(LCD_CS22);
+	lcd_on(LCD_CS23);
+	lcd_on(LCD_CS24);
+	lcd_on(LCD_CS25);
+	lcd_on(LCD_CS26);
+	lcd_on(LCD_CS27);
+	lcd_on(LCD_CS28);
+	lcd_on(LCD_CS29);
 
-	// Up mode
-	lcd_command(0x3B, 0);
+}
 
-	// Start at location 0
-	lcd_command(0x00, 0);
+
+/** Enable the one chip, select the address and send the byte.
+ *
+ * x goes from 0 to 50, y goes from 0 to 32, rounded to 8.*/
+static void
+lcd_doit(
+	const uint8_t pin,
+	uint8_t x,
+	uint8_t y,
+	uint8_t val
+)
+{
+	out(pin, 1);
+	lcd_command((y >> 3) << 6 | x, 0);
+	lcd_command(val, 1);
+	out(pin, 0);
+}
+
+
+/** Display val at position x,y.
+ *
+ * x is ranged 0 to 240, for each pixel
+ * y is ranged 0 to 64, rounded to 8
+ */
+static void
+lcd_display(
+	uint8_t x,
+	uint8_t y,
+	uint8_t val
+)
+{
+	if (y < 32)
+	{
+		// Top half of the display
+		if (x < 50)
+			lcd_doit(LCD_CS20, x - 0, y - 0, val);
+		else
+		if (x < 100)
+			lcd_doit(LCD_CS21, x - 50, y - 0, val);
+		else
+		if (x < 150)
+			lcd_doit(LCD_CS22, x - 100, y - 0, val);
+		else
+		if (x < 200)
+			lcd_doit(LCD_CS23, x - 150, y - 0, val);
+		else
+			lcd_doit(LCD_CS24, x - 200, y - 0, val);
+	} else {
+		// Bottom half of the display
+		if (x < 50)
+			lcd_doit(LCD_CS25, x - 0, y - 32, val);
+		else
+		if (x < 100)
+			lcd_doit(LCD_CS26, x - 50, y - 32, val);
+		else
+		if (x < 150)
+			lcd_doit(LCD_CS27, x - 100, y - 32, val);
+		else
+		if (x < 200)
+			lcd_doit(LCD_CS28, x - 150, y - 32, val);
+		else
+			lcd_doit(LCD_CS29, x - 200, y - 32, val);
+	}
 }
 
 
@@ -267,7 +383,9 @@ main(void)
 	usb_serial_flush_input();
 
 	send_str(PSTR("lcd model100\r\n"));
-	uint16_t i = 0;
+	uint8_t i = 0;
+	uint8_t j = 0;
+	uint8_t x = 0;
 
 	while (1)
 	{
@@ -284,15 +402,20 @@ main(void)
 			}
 		}
 
+		if (i++ == 240)
+		{
+			i = 0;
+			if (j++ == 64)
+				j = 0;
+		}
+
+		lcd_display(i, j, x++);
+
 		if (bit_is_clear(TIFR0, OCF0A))
 			continue;
 
 		sbi(TIFR0, OCF0A); // reset the bit
-
-		i++;
-		if ((i & 0xFF) == 0x00)
-			lcd_command((i & 0xFF) >> 2, 0);
-
+/*
 		uint8_t r = lcd_write(i++);
 
 		char buf[16];
@@ -311,5 +434,6 @@ main(void)
 		buf[off++] = '\r';
 		buf[off++] = '\n';
 		usb_serial_write(buf, off);
+*/
 	}
 }
