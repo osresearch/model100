@@ -187,37 +187,21 @@ lcd_select(
 
 void
 lcd_char(
-	uint8_t x,
-	uint8_t y,
+	uint8_t col,
+	uint8_t row,
 	uint8_t c
 )
 {
-	lcd_select(x * 6, y * 8, 1);
-	uint8_t col = 0;
-	if (x < 8)
-		col = (x - 0);
-	else
-	if (x < 16)
-		col = (x - 8);
-	else
-	if (x < 24)
-		col = (x - 16);
-	else
-	if (x < 32)
-		col = (x - 24);
-	else
-	if (x < 40)
-		col = (x - 32);
-	else
-		return;
-
-	uint8_t row = (y % 8);
-	lcd_command(row << 6 | (col*6), 0);
+	uint8_t x = col * 6;
+	uint8_t y = row * 8;
 
 	const char * f = font[c];
 
-	for (uint8_t i = 0 ; i < 6 ; i++)
-		lcd_command(pgm_read_byte(&f[i]), 1);
-
-	lcd_select(x * 6, y * 8, 0);
+	for (uint8_t i = 0 ; i < 6 ; i++, x++)
+	{
+		// this would be faster if we used the auto-increment
+		// functions, but has lots of special cases for crossing
+		// display boundaries.
+		lcd_display(x, y, pgm_read_byte(&f[i]));
+	}
 }

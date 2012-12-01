@@ -89,31 +89,28 @@ lcd_command(
 {
 	out(LCD_DI, di);
 	out(LCD_RW, 0); // write
-	LCD_DATA_DDR = 0xFF;
-
 	out(LCD_EN, 1);
+	LCD_DATA_DDR = 0xFF;
 	LCD_DATA_PORT = byte;
-	_delay_us(1);
+	_delay_us(2);
 	out(LCD_EN, 0);
 
-	// value has been sent, wait a tick, read the status
+	// value has been sent, go into read mode
 	_delay_us(5);
 	LCD_DATA_PORT = 0x00; // no pull ups
 	LCD_DATA_DDR = 0x00;
-	_delay_us(1);
-	out(LCD_RW, 1); // read
-	out(LCD_DI, 0); // status command
 
-	_delay_us(2);
-	
+	out(LCD_DI, 0); // status command
+	out(LCD_RW, 1); // read
+	_delay_us(5);
+
 	out(LCD_EN, 1);
 	_delay_us(1);
 	uint8_t rc = LCD_DATA_PIN;
-	_delay_us(1);
 	out(LCD_EN, 0);
 
-	out(LCD_RW, 0); // read
-
+	// Everything looks good.
+	out(LCD_RW, 0); // go back into write mode
 	return rc;
 }
 
