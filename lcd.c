@@ -325,6 +325,7 @@ lcd_display(
 	}
 }
 
+#include "font.c"
 
 int
 main(void)
@@ -402,6 +403,7 @@ main(void)
 			}
 		}
 
+#if 0
 		if (i++ == 240)
 		{
 			i = 0;
@@ -410,6 +412,16 @@ main(void)
 		}
 
 		lcd_display(i, j, x++);
+#else
+		lcd_char(i, j, x);
+		x = (x + 1) & 0x7F;
+		if (i++ == 40)
+		{
+			i = 0;
+			if (j++ == 8)
+				j = 0;
+		}
+#endif
 
 		if (bit_is_clear(TIFR0, OCF0A))
 			continue;
