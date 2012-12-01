@@ -187,7 +187,7 @@ lcd_init(void)
 	cbi(TCCR1B, CS11);
 	sbi(TCCR1B, CS10);
 
-	lcd_contrast(20);
+	lcd_contrast(64);
 	
 	_delay_ms(20);
 
