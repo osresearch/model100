@@ -11,6 +11,20 @@
  *
  * In write mode, data is latched on the fall of LCD_EN
  * LCD_DI high == data, low == command
+ *
+ * Keep free:
+ * i2c: PD0, PD1
+ * RS232: PD2, PD3
+ * SPI: PB3, PB2, PB1, PB0
+ *
+ * Keyboard needs:
+ *	9 column, 8 row: 17
+ * LCD needs:
+ *	10 select, (could be shared with keyboard?)
+ *	8 data
+ * 	CS1 can be wired high
+ *	EN, DI, RW: 3
+ *	V2: 
  */
 
 #include <avr/io.h>
@@ -38,16 +52,31 @@
 #define LCD_DATA_PIN	PIND
 #define LCD_DATA_DDR	DDRD
 
-#define LCD_CS24	0xF7 // 16
-#define LCD_CS23	0xF6 // 16
-#define LCD_CS29	0xF5 // 16
-#define LCD_CS22	0xF4 // 16
-#define LCD_CS28	0xF3 // 16
-#define LCD_CS21	0xF2 // 16
-#define LCD_CS27	0xF1 // 16
 #define LCD_CS20	0xF0 // 16
-#define LCD_CS26	0xE6 // 16
+#define LCD_CS21	0xF2 // 16
+#define LCD_CS22	0xF4 // 16
+#define LCD_CS23	0xF6 // 16
+#define LCD_CS24	0xF7 // 16
 #define LCD_CS25	0xE7 // 16
+#define LCD_CS26	0xE6 // 16
+#define LCD_CS27	0xF1 // 16
+#define LCD_CS28	0xF3 // 16
+#define LCD_CS29	0xF5 // 16
+
+// Shared with LCD chip select lines
+#define KEY_C0		0xF0
+#define KEY_C1		0xF1
+#define KEY_C2		0xF2
+#define KEY_C3		0xF3
+#define KEY_C4		0xF4
+#define KEY_C5		0xF5
+#define KEY_C6		0xF6
+#define KEY_C7		0xF7
+#define KEY_C8		0xE7
+#define KEY_C9		0xE6
+#define KEY_ROWS_PIN	PINC
+#define KEY_ROWS_DDR	DDRC
+#define KEY_ROWS_PORT	PORTC
 
 void send_str(const char *s);
 uint8_t recv_str(char *buf, uint8_t size);
@@ -303,6 +332,84 @@ lcd_display(
 
 #include "font.c"
 
+
+static void
+keyboard_init(void)
+{
+	// KEY_Cx configuration is handled in lcd_init() sincej
+	// they are shared with the chip select lines of the LCD 
+	KEY_ROWS_DDR = 0x00; // all input
+	KEY_ROWS_PORT = 0xFF; // all pull up
+
+	ddr(KEY_C0, 0);
+	ddr(KEY_C1, 0);
+	ddr(KEY_C2, 0);
+	ddr(KEY_C3, 0);
+	ddr(KEY_C4, 0);
+	ddr(KEY_C5, 0);
+	ddr(KEY_C6, 0);
+	ddr(KEY_C7, 0);
+	ddr(KEY_C8, 0);
+	ddr(KEY_C9, 0);
+}
+
+static void
+keyboard_reset(void)
+{
+	// KEY_Cx configuration is handled in lcd_init() sincej
+	// they are shared with the chip select lines of the LCD 
+	KEY_ROWS_DDR = 0x00; // all input
+	KEY_ROWS_PORT = 0x00; // no pullups
+
+	ddr(KEY_C0, 1);
+	ddr(KEY_C1, 1);
+	ddr(KEY_C2, 1);
+	ddr(KEY_C3, 1);
+	ddr(KEY_C4, 1);
+	ddr(KEY_C5, 1);
+	ddr(KEY_C6, 1);
+	ddr(KEY_C7, 1);
+	ddr(KEY_C8, 1);
+	ddr(KEY_C9, 1);
+}
+
+
+static uint16_t
+keyboard_scan(void)
+{
+	uint8_t rows;
+
+	keyboard_init();
+
+#define READ_KEY(PIN, PIN_NUM) \
+	do { \
+		ddr(PIN, 1); \
+		out(PIN, 0); \
+		rows = ~KEY_ROWS_PIN; \
+		ddr(PIN, 0); \
+		if (rows) \
+		{ \
+			keyboard_reset(); \
+			return (PIN_NUM << 8) | rows; \
+		} \
+	} while (0)
+
+	READ_KEY(KEY_C0, 0);
+	READ_KEY(KEY_C1, 1);
+	READ_KEY(KEY_C2, 2);
+	READ_KEY(KEY_C3, 3);
+	READ_KEY(KEY_C4, 4);
+	READ_KEY(KEY_C5, 5);
+	READ_KEY(KEY_C6, 7);
+	READ_KEY(KEY_C7, 8);
+	READ_KEY(KEY_C8, 9);
+	READ_KEY(KEY_C9,10);
+
+	// nothing
+	return 0xFFFF;
+}
+
+
 int
 main(void)
 {
@@ -324,6 +431,7 @@ main(void)
 	out(LED, 1);
 
 	lcd_init();
+	//keyboard_init();
 
         // Timer 0 is used for a 64 Hz control loop timer.
         // Clk/256 == 62.5 KHz, count up to 125 == 500 Hz
@@ -379,16 +487,6 @@ main(void)
 			}
 		}
 
-#if 0
-		if (i++ == 240)
-		{
-			i = 0;
-			if (j++ == 64)
-				j = 0;
-		}
-
-		lcd_display(i, j, x++);
-#else
 		lcd_char(i, j, x);
 		if (i++ == 40)
 		{
@@ -397,7 +495,20 @@ main(void)
 			if (j++ == 8)
 				j = 0;
 		}
-#endif
+
+		uint16_t key = keyboard_scan();
+		if (key != 0xFFFF)
+		{
+			char buf[16];
+			int off = 0;
+			buf[off++] = hexdigit(key >> 12);
+			buf[off++] = hexdigit(key >> 8);
+			buf[off++] = hexdigit(key >> 4);
+			buf[off++] = hexdigit(key >> 0);
+			buf[off++] = '\r';
+			buf[off++] = '\n';
+			usb_serial_write(buf, off);
+		}
 
 		if (bit_is_clear(TIFR0, OCF0A))
 			continue;
