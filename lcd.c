@@ -33,8 +33,10 @@
 #define LCD_EN		0xB2 // 19
 #define LCD_RW		0xB1 // 20
 #define LCD_DI		0xB7 // 21
+#define LCD_BZ		0xB0 // 2
 
 #define LCD_DATA_PORT	PORTD // 22-29
+#define LCD_DATA_PIN	PIND
 #define LCD_DATA_DDR	DDRD
 
 
@@ -69,244 +71,71 @@ void send_str(const char *s)
 	}
 }
 
+
 #if 0
-#define CHAR_RAM 0x18
-
-
-#define ADDR_0	0xF4
-#define ADDR_1	0xF5
-#define ADDR_2	0xF6
-#define ADDR_3	0xF7
-#define ADDR_4	0xD7
-
-#define DATA_0	0xC6
-#define DATA_1	0xD3
-#define DATA_2	0xD0
-#define DATA_3	0xB7
-#define DATA_4	0xB3
-#define DATA_5	0xB2
-#define DATA_6	0xB1
-#define DATA_7	0xB0
-
-#define FLASH	0xF1
-#define RESET	0xF0
-#define WRCE	0xD5
-#define RD	0xC7
-#define CLKSEL	0xD6
-
-#define BUTTON	0xD1
-
-static const char numbers[][16] = {
-	"",
-	"one",
-	"two",
-	"three",
-	"four",
-	"five",
-	"six",
-	"seven",
-	"eight",
-	"nine",
-	"ten",
-	"eleven",
-	"twelve",
-	"thirteen",
-	"fourteen",
-	"a quarter",
-	"sixteen",
-	"seventeen",
-	"eightteen",
-	"nineteen",
-	"twenty",
-	"twenty one",
-	"twenty two",
-	"twenty three",
-	"twenty four",
-	"twenty five",
-	"twenty six",
-	"twenty seven",
-	"twenty eight",
-	"twenty nine",
-	"half",
-};
-
-
-static void
-lcd_write(
-	uint8_t addr,
-	uint8_t data
-)
-{
-	out(ADDR_0, addr & 1); addr >>= 1;
-	out(ADDR_1, addr & 1); addr >>= 1;
-	out(ADDR_2, addr & 1); addr >>= 1;
-	out(ADDR_3, addr & 1); addr >>= 1;
-	out(ADDR_4, addr & 1); addr >>= 1;
-
-	out(DATA_0, data & 1); data >>= 1;
-	out(DATA_1, data & 1); data >>= 1;
-	out(DATA_2, data & 1); data >>= 1;
-	out(DATA_3, data & 1); data >>= 1;
-	out(DATA_4, data & 1); data >>= 1;
-	out(DATA_5, data & 1); data >>= 1;
-	out(DATA_6, data & 1); data >>= 1;
-	out(DATA_7, data & 1); data >>= 1;
-
-	//_delay_us(100);
-	out(WRCE, 0);
-	_delay_us(10);
-	out(WRCE, 1);
-}
-
-static uint8_t ms;
-static uint8_t sec;
-static uint8_t min;
-static uint8_t hour;
-
-static void
-update_time(void)
-{
-	if (++ms < 125)
-		return;
-
-	ms = 0;
-	if (++sec< 60)
-		return;
-
-	sec = 0;
-	if (++min < 60)
-		return;
-
-	min = 0;
-	if (++hour < 24)
-		return;
-
-	hour = 0;
-}
-
-
-static char scroll_output[64];
-static uint8_t scroll_offset;
-
-static void
-scroll(void)
-{
-	uint8_t did_reset = 0;
-
-	for (int i = 0 ; i < 8 ; i++)
-	{
-		char c = scroll_output[scroll_offset+i];
-		if (did_reset || c == '\0')
-		{
-			did_reset = 1;
-			c = ' ';
-		}
-	
-		lcd_write(CHAR_RAM + i, c);
-	}
-
-	if (did_reset)
-		scroll_offset = 0;
-	else
-		scroll_offset++;
-}
-
-
-static void
-draw_hms(void)
-{
-	lcd_write(CHAR_RAM | 0, '0' + (hour / 10) % 10);
-	lcd_write(CHAR_RAM | 1, '0' + (hour / 1) % 10);
-	lcd_write(CHAR_RAM | 2, ':');
-	lcd_write(CHAR_RAM | 3, '0' + (min / 10) % 10);
-	lcd_write(CHAR_RAM | 4, '0' + (min / 1) % 10);
-	lcd_write(CHAR_RAM | 5, ':');
-	lcd_write(CHAR_RAM | 6, '0' + (sec / 10) % 10);
-	lcd_write(CHAR_RAM | 7, '0' + (sec / 1) % 10);
-}
-
-
-static void
-hour_output(
-	uint8_t hour
-)
-{
-	if (hour == 0 || hour == 24)
-	{
-		strcat(scroll_output, "midnight");
-	} else
-	if (hour < 12)
-	{
-		strcat(scroll_output, numbers[hour]);
-		strcat(scroll_output, " in the morning");
-	} else
-	if (hour == 12)
-	{
-		strcat(scroll_output, "noon");
-	} else
-	if (hour < 17)
-	{
-		strcat(scroll_output, numbers[hour-12]);
-		strcat(scroll_output, " in the afternoon");
-	} else {
-		strcat(scroll_output, numbers[hour-12]);
-		strcat(scroll_output, " in the evening");
-	}
-}
-
-static void
-word_clock(void)
-{
-	scroll_output[0] = '\0';
-	strcat(scroll_output, "       ");
-
-	if (min <= 30)
-	{
-		if (min != 0)
-		{
-			strcat(scroll_output, numbers[min]);
-			strcat(scroll_output, " past ");
-		}
-
-		hour_output(hour);
-	} else {
-		strcat(scroll_output, numbers[60-min]);
-		strcat(scroll_output, " before ");
-		hour_output(hour + 1);
-	}
-
-	strcat(scroll_output, "      ");
-}
-#endif
-
-
-static void
-lcd_command(
-	const uint8_t byte,
-	const uint8_t rs
-)
+static uint8_t
+lcd_read(void)
 {
 	out(LCD_DI, rs);
+	ddr(LCD_DATA_PORT, 0); // all in
+	out(LCD_RW, 1); // read
+
+	_delay_us(10);
+	out(LCD_EN, 1);
+	_delay_us(100);
+	out(LCD_EN, 0);
+	
 
 	out(LCD_EN, 1);
 	LCD_DATA_PORT = byte;
-	_delay_us(1);
+	_delay_us(10);
+	out(LCD_EN, 0);
+#endif
+
+
+static uint8_t
+lcd_command(
+	const uint8_t byte,
+	const uint8_t di // 0 == instruction, 1 == data
+)
+{
+	out(LCD_DI, di);
+	out(LCD_RW, 0); // write
+	LCD_DATA_DDR = 0xFF;
+
+	out(LCD_EN, 1);
+	LCD_DATA_PORT = byte;
+	_delay_us(100);
 	out(LCD_EN, 0);
 
-	// Rate limit if this is a command, not a text write
-	if (rs == 0)
-		_delay_ms(5);
-	else
-		_delay_us(5);
+	// value has been sent, wait a tick, read the status
+	_delay_us(50);
+	LCD_DATA_PORT = 0x00; // no pull ups
+	LCD_DATA_DDR = 0x00;
+	_delay_us(25);
+	out(LCD_RW, 1); // read
+	out(LCD_DI, 0); // status command
+
+	_delay_us(25);
+	
+	out(LCD_EN, 1);
+	_delay_us(1);
+	uint8_t rc = LCD_DATA_PIN;
+	_delay_us(100);
+	out(LCD_EN, 0);
+
+	out(LCD_RW, 0); // read
+
+	return rc;
 }
 
 
-static void
+static uint8_t
 lcd_write(
 	const uint8_t byte
 )
 {
-	lcd_command(byte, 1);
+	return lcd_command(byte, 1);
 }
 
 static void
@@ -321,19 +150,27 @@ static void
 lcd_init(void)
 {
 	LCD_DATA_PORT = 0x00;
-	LCD_DATA_DDR = 0xFF;
-
-	ddr(LCD_DI, 1);
-	ddr(LCD_RW, 1);
-	ddr(LCD_EN, 1);
-	ddr(LCD_V2, 1);
-	ddr(LCD_DI, 1);
+	LCD_DATA_DDR = 0x00;
 
 	out(LCD_DI, 0);
 	out(LCD_RW, 0);
 	out(LCD_EN, 0);
 	out(LCD_V2, 0);
 	out(LCD_DI, 0);
+	out(LCD_CS1, 0);
+	out(LCD_CS20, 0);
+	out(LCD_RESET, 0);
+	out(LCD_BZ, 0);
+
+	ddr(LCD_DI, 1);
+	ddr(LCD_RW, 1);
+	ddr(LCD_EN, 1);
+	ddr(LCD_V2, 1);
+	ddr(LCD_CS1, 1);
+	ddr(LCD_CS20, 1);
+	ddr(LCD_RESET, 1);
+	ddr(LCD_BZ, 1);
+
 
 	// OC1B is used to control brightness via PWM
 	// Configure OC1x in fast-PWM mode, 10-bit
@@ -360,15 +197,13 @@ lcd_init(void)
 	// Raise the master select line, since we always want to talk to
 	// all chips.
 	out(LCD_CS1, 1);
-
-	// Leave RW low to indicate that we will be writing to the chip
-	out(LCD_RW, 0);
+	out(LCD_CS20, 1);
 
 	// Turn on display
 	lcd_command(0x39, 0);
 
 	// Up mode
-	lcd_command(0x3A, 0);
+	lcd_command(0x3B, 0);
 
 	// Start at location 0
 	lcd_command(0x00, 0);
@@ -432,7 +267,7 @@ main(void)
 	usb_serial_flush_input();
 
 	send_str(PSTR("lcd model100\r\n"));
-	uint8_t i = 0;
+	uint16_t i = 0;
 
 	while (1)
 	{
@@ -441,13 +276,40 @@ main(void)
 		{
 			usb_serial_putchar(c);
 			if (c == '+')
+			{
 				OCR1B += 8;
+				out(LCD_BZ, 1);
+				_delay_ms(50);
+				out(LCD_BZ, 0);
+			}
 		}
 
 		if (bit_is_clear(TIFR0, OCF0A))
 			continue;
 
 		sbi(TIFR0, OCF0A); // reset the bit
-		lcd_write(i++);
+
+		i++;
+		if ((i & 0xFF) == 0x00)
+			lcd_command((i & 0xFF) >> 2, 0);
+
+		uint8_t r = lcd_write(i++);
+
+		char buf[16];
+		int off = 0;
+		buf[off++] = hexdigit(r >> 4);
+		buf[off++] = hexdigit(r >> 0);
+		buf[off++] = ' ';
+		buf[off++] = r & 0x80 ? 'B' : ' ';
+		buf[off++] = r & 0x40 ? 'U' : ' ';
+		buf[off++] = r & 0x20 ? 'O' : ' ';
+		buf[off++] = r & 0x10 ? 'R' : ' ';
+		buf[off++] = r & 0x08 ? '?' : ' ';
+		buf[off++] = r & 0x04 ? '?' : ' ';
+		buf[off++] = r & 0x02 ? '?' : ' ';
+		buf[off++] = r & 0x01 ? '?' : ' ';
+		buf[off++] = '\r';
+		buf[off++] = '\n';
+		usb_serial_write(buf, off);
 	}
 }

@@ -20,7 +20,6 @@
 
 /*
 #if defined(__AVR_AT90USB162__) \
-	case 0xA: func(cat(prefix, A), pin); break; \
 #endif
 */
 
@@ -29,6 +28,7 @@
 #define BITS_FOR_ALL(prefix, func, port, pin) do { \
 	switch (port) \
 	{ \
+	case 0xA: func(cat(prefix, A), pin); break; \
 	case 0xB: func(cat(prefix, B), pin); break; \
 	case 0xC: func(cat(prefix, C), pin); break; \
 	case 0xD: func(cat(prefix, D), pin); break; \
