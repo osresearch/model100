@@ -64,19 +64,13 @@
 #define LCD_CS29	0xF5 // 16
 
 // Shared with LCD chip select lines
-#define KEY_C0		0xF0
-#define KEY_C1		0xF1
-#define KEY_C2		0xF2
-#define KEY_C3		0xF3
-#define KEY_C4		0xF4
-#define KEY_C5		0xF5
-#define KEY_C6		0xF6
-#define KEY_C7		0xF7
-#define KEY_C8		0xE7
-#define KEY_C9		0xE6
 #define KEY_ROWS_PIN	PINC
 #define KEY_ROWS_DDR	DDRC
 #define KEY_ROWS_PORT	PORTC
+
+#define KEY_COLS_PIN	PINF
+#define KEY_COLS_DDR	DDRF
+#define KEY_COLS_PORT	PORTF
 
 void send_str(const char *s);
 uint8_t recv_str(char *buf, uint8_t size);
@@ -339,74 +333,47 @@ keyboard_init(void)
 	// KEY_Cx configuration is handled in lcd_init() sincej
 	// they are shared with the chip select lines of the LCD 
 	KEY_ROWS_DDR = 0x00; // all input
-	KEY_ROWS_PORT = 0xFF; // all pull up
+	KEY_ROWS_PORT = 0xFF; // all pull ups enabled
 
-	ddr(KEY_C0, 0);
-	ddr(KEY_C1, 0);
-	ddr(KEY_C2, 0);
-	ddr(KEY_C3, 0);
-	ddr(KEY_C4, 0);
-	ddr(KEY_C5, 0);
-	ddr(KEY_C6, 0);
-	ddr(KEY_C7, 0);
-	ddr(KEY_C8, 0);
-	ddr(KEY_C9, 0);
+	KEY_COLS_DDR = 0xFF; // all output
+	KEY_COLS_PORT = 0xFF; // all high
 }
+
 
 static void
 keyboard_reset(void)
 {
-	// KEY_Cx configuration is handled in lcd_init() sincej
-	// they are shared with the chip select lines of the LCD 
-	KEY_ROWS_DDR = 0x00; // all input
-	KEY_ROWS_PORT = 0x00; // no pullups
+	KEY_ROWS_DDR = 0x00; // all inputs
+	KEY_ROWS_PORT = 0x00; // all tri-state
 
-	ddr(KEY_C0, 1);
-	ddr(KEY_C1, 1);
-	ddr(KEY_C2, 1);
-	ddr(KEY_C3, 1);
-	ddr(KEY_C4, 1);
-	ddr(KEY_C5, 1);
-	ddr(KEY_C6, 1);
-	ddr(KEY_C7, 1);
-	ddr(KEY_C8, 1);
-	ddr(KEY_C9, 1);
+	KEY_COLS_DDR = 0xFF; // leave as all output
+	KEY_COLS_PORT = 0x00; // all low
 }
 
 
 static uint16_t
 keyboard_scan(void)
 {
-	uint8_t rows;
+	uint8_t cols;
 
 	keyboard_init();
 
-#define READ_KEY(PIN, PIN_NUM) \
-	do { \
-		ddr(PIN, 1); \
-		out(PIN, 0); \
-		rows = ~KEY_ROWS_PIN; \
-		ddr(PIN, 0); \
-		if (rows) \
-		{ \
-			keyboard_reset(); \
-			return (PIN_NUM << 8) | rows; \
-		} \
-	} while (0)
+	uint8_t mask = 1;
+	for (uint8_t col = 0 ; col < 8 ; col++, mask <<= 1)
+	{
+		KEY_COLS_PORT = ~mask; // pull one down
+		_delay_us(1);
+		uint8_t rows = ~KEY_ROWS_PIN;
 
-	READ_KEY(KEY_C0, 0);
-	READ_KEY(KEY_C1, 1);
-	READ_KEY(KEY_C2, 2);
-	READ_KEY(KEY_C3, 3);
-	READ_KEY(KEY_C4, 4);
-	READ_KEY(KEY_C5, 5);
-	READ_KEY(KEY_C6, 7);
-	READ_KEY(KEY_C7, 8);
-	READ_KEY(KEY_C8, 9);
-	READ_KEY(KEY_C9,10);
+		if (rows)
+		{
+			keyboard_reset();
+			return (col << 8) | rows;
+		}
+	}
 
-	// nothing
-	return 0xFFFF;
+	keyboard_reset();
+	return 0;
 }
 
 
@@ -497,7 +464,7 @@ main(void)
 		}
 
 		uint16_t key = keyboard_scan();
-		if (key != 0xFFFF)
+		if (key != 0)
 		{
 			char buf[16];
 			int off = 0;
