@@ -340,6 +340,61 @@ keyboard_init(void)
 }
 
 
+static const uint8_t keycodes[] PROGMEM =
+{
+	[0x0f] = 'a',
+	[0x03] = 'b',
+	[0x05] = 'c',
+	[0x0d] = 'd',
+	[0x15] = 'e',
+	[0x0c] = 'f',
+	[0x0b] = 'g',
+	[0x0a] = 'h',
+	[0x10] = 'i',
+	[0x09] = 'j',
+	[0x08] = 'k',
+	[0x00] = 'l',
+	[0x01] = 'm',
+	[0x02] = 'n',
+	[0x1f] = 'o',
+	[0x1e] = 'p',
+	[0x17] = 'q',
+	[0x14] = 'r',
+	[0x0e] = 's',
+	[0x13] = 't',
+	[0x11] = 'u',
+	[0x04] = 'v',
+	[0x16] = 'w',
+	[0x06] = 'x',
+	[0x12] = 'y',
+	[0x07] = 'z',
+
+	[0x27] = '1',
+	[0x26] = '2',
+	[0x25] = '3',
+	[0x24] = '4',
+	[0x23] = '5',
+	[0x22] = '6',
+	[0x21] = '7',
+	[0x20] = '8',
+	[0x2f] = '9',
+	[0x2e] = '0',
+	[0x2d] = '-',
+	[0x2c] = '=',
+
+	[0x34] = 27, // escape
+	[0x36] = 8, // backspace
+	[0x37] = ' ',
+	[0x35] = '\t',
+	[0x30] = '\n',
+	[0x1c] = ';',
+	[0x1b] = '\'',
+	[0x1a] = ',',
+	[0x19] = '.',
+	[0x18] = '/',
+	[0x1d] = '[',
+};
+
 static void
 keyboard_reset(void)
 {
@@ -351,11 +406,9 @@ keyboard_reset(void)
 }
 
 
-static uint16_t
+static uint8_t
 keyboard_scan(void)
 {
-	uint8_t cols;
-
 	keyboard_init();
 
 	uint8_t mask = 1;
@@ -365,15 +418,23 @@ keyboard_scan(void)
 		_delay_us(1);
 		uint8_t rows = ~KEY_ROWS_PIN;
 
-		if (rows)
+		if (!rows)
+			continue;
+
+		keyboard_reset();
+		mask = 1;
+
+		for (uint8_t row = 0 ; row < 8 ; row++, mask <<= 1)
 		{
-			keyboard_reset();
-			return (col << 8) | rows;
+			if ((rows & mask) == 0)
+				continue;
+
+			return col << 3 | row;
 		}
 	}
 
 	keyboard_reset();
-	return 0;
+	return 0xFF;
 }
 
 
@@ -438,6 +499,7 @@ main(void)
 	uint8_t i = 0;
 	uint8_t j = 0;
 	uint8_t x = 0;
+	uint8_t last_key = 0;
 
 	while (1)
 	{
@@ -463,43 +525,33 @@ main(void)
 				j = 0;
 		}
 
-		uint16_t key = keyboard_scan();
-		if (key != 0)
+		uint8_t key = keyboard_scan();
+		if (key == 0xFF)
 		{
-			char buf[16];
-			int off = 0;
-			buf[off++] = hexdigit(key >> 12);
-			buf[off++] = hexdigit(key >> 8);
-			buf[off++] = hexdigit(key >> 4);
-			buf[off++] = hexdigit(key >> 0);
-			buf[off++] = '\r';
-			buf[off++] = '\n';
-			usb_serial_write(buf, off);
+			last_key = 0xFF;
+		} else
+		if (key != last_key)
+		{
+			last_key = key;
+			char c = pgm_read_byte(&keycodes[key]);
+			if (c != 0)
+			{
+				usb_serial_putchar(c);
+			} else {
+				char buf[16];
+				int off = 0;
+				buf[off++] = hexdigit(key >> 4);
+				buf[off++] = hexdigit(key >> 0);
+				buf[off++] = '\r';
+				buf[off++] = '\n';
+				usb_serial_write(buf, off);
+			}
 		}
+			
 
 		if (bit_is_clear(TIFR0, OCF0A))
 			continue;
 
 		sbi(TIFR0, OCF0A); // reset the bit
-/*
-		uint8_t r = lcd_write(i++);
-
-		char buf[16];
-		int off = 0;
-		buf[off++] = hexdigit(r >> 4);
-		buf[off++] = hexdigit(r >> 0);
-		buf[off++] = ' ';
-		buf[off++] = r & 0x80 ? 'B' : ' ';
-		buf[off++] = r & 0x40 ? 'U' : ' ';
-		buf[off++] = r & 0x20 ? 'O' : ' ';
-		buf[off++] = r & 0x10 ? 'R' : ' ';
-		buf[off++] = r & 0x08 ? '?' : ' ';
-		buf[off++] = r & 0x04 ? '?' : ' ';
-		buf[off++] = r & 0x02 ? '?' : ' ';
-		buf[off++] = r & 0x01 ? '?' : ' ';
-		buf[off++] = '\r';
-		buf[off++] = '\n';
-		usb_serial_write(buf, off);
-*/
 	}
 }
