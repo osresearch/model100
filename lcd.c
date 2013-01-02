@@ -40,17 +40,18 @@
 
 #define LED		0xD6
 
-#define LCD_V2		0xB6 // 4, Analog voltage to control contrast
-#define LCD_RESET	0xB4 // 17
-#define LCD_CS1		0xB3 // 18
-#define LCD_EN		0xB2 // 19
-#define LCD_RW		0xB1 // 20
-#define LCD_DI		0xB7 // 21
-#define LCD_BZ		0xB0 // 2
+#define LCD_V2		0xB7 // 4, Analog voltage to generate negative voltage
+#define LCD_VO		0xB6 // Analog voltage to control contrast
+#define LCD_RESET	0xD4 // 17
+#define LCD_CS1		0xD5 // 18
+#define LCD_EN		0xE0 // 19
+#define LCD_RW		0xD7 // 20
+#define LCD_DI		0xE1 // 21
+#define LCD_BZ		0xB5 // 2
 
-#define LCD_DATA_PORT	PORTD // 22-29
-#define LCD_DATA_PIN	PIND
-#define LCD_DATA_DDR	DDRD
+#define LCD_DATA_PORT	PORTC // 22-29
+#define LCD_DATA_PIN	PINC
+#define LCD_DATA_DDR	DDRC
 
 #define LCD_CS20	0xF0 // 16
 #define LCD_CS21	0xF2 // 16
@@ -146,6 +147,16 @@ lcd_write(
 	return lcd_command(byte, 1);
 }
 
+
+static void
+lcd_vee(
+	uint8_t x
+)
+{
+	OCR1C = x;
+}
+
+
 static void
 lcd_contrast(
 	uint8_t x
@@ -185,6 +196,7 @@ lcd_init(void)
 	out(LCD_RW, 0);
 	out(LCD_EN, 0);
 	out(LCD_V2, 0);
+	out(LCD_VO, 0);
 	out(LCD_DI, 0);
 	out(LCD_CS1, 0);
 	out(LCD_CS20, 0);
@@ -204,6 +216,7 @@ lcd_init(void)
 	ddr(LCD_RW, 1);
 	ddr(LCD_EN, 1);
 	ddr(LCD_V2, 1);
+	ddr(LCD_VO, 1);
 	ddr(LCD_CS1, 1);
 	ddr(LCD_RESET, 1);
 	ddr(LCD_BZ, 1);
@@ -220,12 +233,17 @@ lcd_init(void)
 	ddr(LCD_CS29, 1);
 
 
-	// OC1B is used to control brightness via PWM
 	// Configure OC1x in fast-PWM mode, 10-bit
 	sbi(TCCR1B, WGM12);
 	sbi(TCCR1A, WGM11);
 	sbi(TCCR1A, WGM10);
 
+	// OC1C is used to generate the Vee via a charge pump
+	// Configure output mode to clear on match, set at top
+	sbi(TCCR1A, COM1C1);
+	cbi(TCCR1A, COM1C0);
+
+	// OC1B is used to control brightness via PWM
 	// Configure output mode to clear on match, set at top
 	sbi(TCCR1A, COM1B1);
 	cbi(TCCR1A, COM1B0);
@@ -235,6 +253,7 @@ lcd_init(void)
 	cbi(TCCR1B, CS11);
 	sbi(TCCR1B, CS10);
 
+	lcd_vee(64);
 	lcd_contrast(64);
 	
 	_delay_ms(20);
@@ -509,6 +528,13 @@ main(void)
 			usb_serial_putchar(c);
 			if (c == '+')
 			{
+				OCR1C += 8;
+				out(LCD_BZ, 1);
+				_delay_ms(50);
+				out(LCD_BZ, 0);
+			}
+			if (c == '-')
+			{
 				OCR1B += 8;
 				out(LCD_BZ, 1);
 				_delay_ms(50);
@@ -525,6 +551,7 @@ main(void)
 				j = 0;
 		}
 
+#if 0
 		uint8_t key = keyboard_scan();
 		if (key == 0xFF)
 		{
@@ -547,7 +574,7 @@ main(void)
 				usb_serial_write(buf, off);
 			}
 		}
-			
+#endif
 
 		if (bit_is_clear(TIFR0, OCF0A))
 			continue;
