@@ -54,15 +54,15 @@
 #define LCD_DATA_DDR	DDRC
 
 #define LCD_CS20	0xF0 // 16
-#define LCD_CS21	0xF2 // 16
-#define LCD_CS22	0xF4 // 16
-#define LCD_CS23	0xF6 // 16
-#define LCD_CS24	0xF7 // 16
-#define LCD_CS25	0xE7 // 16
-#define LCD_CS26	0xE6 // 16
-#define LCD_CS27	0xF1 // 16
-#define LCD_CS28	0xF3 // 16
-#define LCD_CS29	0xF5 // 16
+#define LCD_CS21	0xF1 // 16
+#define LCD_CS22	0xF2 // 16
+#define LCD_CS23	0xF3 // 16
+#define LCD_CS24	0xF4 // 16
+#define LCD_CS25	0xF5 // 16
+#define LCD_CS26	0xF6 // 16
+#define LCD_CS27	0xF7 // 16
+#define LCD_CS28	0xE6 // 16
+#define LCD_CS29	0xE7 // 16
 
 // Shared with LCD chip select lines
 #define KEY_ROWS_PIN	PINC
@@ -150,7 +150,7 @@ lcd_write(
 
 static void
 lcd_vee(
-	uint8_t x
+	uint16_t x
 )
 {
 	OCR1C = x;
@@ -159,7 +159,7 @@ lcd_vee(
 
 static void
 lcd_contrast(
-	uint8_t x
+	uint16_t x
 )
 {
 	OCR1B = x;
@@ -253,8 +253,8 @@ lcd_init(void)
 	cbi(TCCR1B, CS11);
 	sbi(TCCR1B, CS10);
 
-	lcd_vee(64);
-	lcd_contrast(64);
+	lcd_vee(0x100); // 50% duty cycle
+	lcd_contrast(0x280); // almost +5V
 	
 	_delay_ms(20);
 
@@ -520,6 +520,9 @@ main(void)
 	uint8_t x = 0;
 	uint8_t last_key = 0;
 
+	char buf[16];
+	int off = 0;
+
 	while (1)
 	{
 		int c = usb_serial_getchar();
@@ -529,16 +532,24 @@ main(void)
 			if (c == '+')
 			{
 				OCR1C += 8;
-				out(LCD_BZ, 1);
-				_delay_ms(50);
-				out(LCD_BZ, 0);
+				off = 0;
+				buf[off++] = hexdigit(OCR1C >> 8);
+				buf[off++] = hexdigit(OCR1C >> 4);
+				buf[off++] = hexdigit(OCR1C >> 0);
+				buf[off++] = '\r';
+				buf[off++] = '\n';
+				usb_serial_write(buf, off);
 			}
 			if (c == '-')
 			{
 				OCR1B += 8;
-				out(LCD_BZ, 1);
-				_delay_ms(50);
-				out(LCD_BZ, 0);
+				off = 0;
+				buf[off++] = hexdigit(OCR1B >> 8);
+				buf[off++] = hexdigit(OCR1B >> 4);
+				buf[off++] = hexdigit(OCR1B >> 0);
+				buf[off++] = '\r';
+				buf[off++] = '\n';
+				usb_serial_write(buf, off);
 			}
 		}
 
