@@ -72,7 +72,10 @@
 #define KEY_COLS_PIN	PINF
 #define KEY_COLS_DDR	DDRF
 #define KEY_COLS_PORT	PORTF
-#define KEY_COLS_FUNC	0xE6 // shared with LCD_CS8
+#define KEY_COLS_MOD	0xE6 // shared with LCD_CS8
+
+#define KEY_MOD_SHIFT	0x01
+#define KEY_MOD_CAPS	0x20
 
 void send_str(const char *s);
 uint8_t recv_str(char *buf, uint8_t size);
@@ -370,8 +373,8 @@ keyboard_init(void)
 	KEY_COLS_PORT = 0xFF; // all high
 
 	// Pull the function key line high, too
-	ddr(KEY_COLS_FUNC, 1);
-	out(KEY_COLS_FUNC, 1);
+	ddr(KEY_COLS_MOD, 1);
+	out(KEY_COLS_MOD, 1);
 }
 
 
@@ -380,7 +383,7 @@ static const uint8_t keycodes[8][8] PROGMEM =
 	[1] = "ZXCVBNML",
 	[2] = "ASDFGHJK",
 	[3] = "QWERTYUI",
-	[4] = "OP]:\"<>?",
+	[4] = "OP[;',./",
 	[5] = "12345678",
 	[6] = "90-+^v<>", // need to handle arrows
 	[7] = " i\t\eLC0\n", // need to handle weird keys
@@ -397,22 +400,36 @@ keyboard_reset(void)
 	KEY_COLS_PORT = 0x00; // all low
 
 	// Reset the function key modifier to pull down, too
-	ddr(KEY_COLS_FUNC, 1);
-	out(KEY_COLS_FUNC, 0);
+	ddr(KEY_COLS_MOD, 1);
+	out(KEY_COLS_MOD, 0);
 }
 
 
+/** Check to see if there are any keys held down.
+ *
+ * \todo Scans only one column per call?
+ *
+ * \todo Multiple keys held?
+ */
 static uint8_t
 keyboard_scan(void)
 {
 	keyboard_init();
 
-	uint8_t mask = 2;
-	for (uint8_t col = 1 ; col < 8 ; col++, mask <<= 1)
+
+	// Scan the modifier column first, which is on the separate pin
+	out(KEY_COLS_MOD, 0);
+	_delay_us(50);
+	uint8_t mods = ~KEY_ROWS_PIN;
+	out(KEY_COLS_MOD, 1);
+
+	uint8_t mask = 1;
+	for (uint8_t col = 0 ; col < 8 ; col++, mask <<= 1)
 	{
 		KEY_COLS_PORT = ~mask; // pull one down
-		_delay_us(2);
+		_delay_us(50);
 		uint8_t rows = ~KEY_ROWS_PIN;
+		KEY_COLS_PORT = 0xFF;; // bring them all back up
 
 		if (!rows)
 			continue;
@@ -425,7 +442,18 @@ keyboard_scan(void)
 			if ((rows & mask) == 0)
 				continue;
 
-			return col << 3 | row;
+			char c = pgm_read_byte(&keycodes[col][row]);
+
+			// If we are not caps locked, use lowercase
+			if ((mods & KEY_MOD_CAPS) == 0
+			&& 'A' <= c && c <= 'Z')
+				c += 32;
+
+			// If we are shifted, toggle the 5th bit
+			if (mods & KEY_MOD_SHIFT)
+				c ^= 32;
+
+			return c;
 		}
 	}
 
@@ -569,19 +597,7 @@ main(void)
 		if (key != last_key)
 		{
 			last_key = key;
-			char c = pgm_read_byte(&keycodes[key >> 3][key & 7]);
-			if (c != 0)
-			{
-				usb_serial_putchar(c);
-			} else {
-				char buf[16];
-				int off = 0;
-				buf[off++] = hexdigit(key >> 4);
-				buf[off++] = hexdigit(key >> 0);
-				buf[off++] = '\r';
-				buf[off++] = '\n';
-				usb_serial_write(buf, off);
-			}
+			usb_serial_putchar(key);
 		}
 #endif
 
