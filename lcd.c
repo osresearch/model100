@@ -378,17 +378,30 @@ keyboard_init(void)
 }
 
 
-static const uint8_t keycodes[8][8] PROGMEM =
+static const uint8_t key_codes[8][8] PROGMEM =
 {
+	[0] = "", // function keys; ignore for now
+	[1] = "zxcvbnml",
+	[2] = "asdfghjk",
+	[3] = "qwertyui",
+	[4] = "op[;',./",
+	[5] = "12345678",
+	[6] = "90-=^v<>", // need to handle arrows
+	[7] = " i\t\eLC0\n", // need to handle weird keys
+};
+
+static const uint8_t shift_codes[8][8] PROGMEM =
+{
+	[0] = "", // function keys; ignore for now
 	[1] = "ZXCVBNML",
 	[2] = "ASDFGHJK",
 	[3] = "QWERTYUI",
-	[4] = "OP[;',./",
-	[5] = "12345678",
-	[6] = "90-+^v<>", // need to handle arrows
+	[4] = "OP]:\"<>?",
+	[5] = "!@#$%^&*",
+	[6] = "()_+^v<>", // need to handle arrows
 	[7] = " i\t\eLC0\n", // need to handle weird keys
-	[0] = "" // modifier keys; ignore for now
 };
+
 
 static void
 keyboard_reset(void)
@@ -420,7 +433,7 @@ keyboard_scan(void)
 	// Scan the modifier column first, which is on the separate pin
 	out(KEY_COLS_MOD, 0);
 	_delay_us(50);
-	uint8_t mods = ~KEY_ROWS_PIN;
+	const uint8_t mods = ~KEY_ROWS_PIN;
 	out(KEY_COLS_MOD, 1);
 
 	uint8_t mask = 1;
@@ -442,16 +455,14 @@ keyboard_scan(void)
 			if ((rows & mask) == 0)
 				continue;
 
-			char c = pgm_read_byte(&keycodes[col][row]);
+			char c = pgm_read_byte(&(
+				mods & KEY_MOD_SHIFT ? shift_codes : key_codes
+				)[col][row]);
 
-			// If we are not caps locked, use lowercase
-			if ((mods & KEY_MOD_CAPS) == 0
-			&& 'A' <= c && c <= 'Z')
-				c += 32;
-
-			// If we are shifted, toggle the 5th bit
-			if (mods & KEY_MOD_SHIFT)
-				c ^= 32;
+			// If we are caps locked, switch lower toupper
+			if ((mods & KEY_MOD_CAPS) == 1
+			&& 'a' <= c && c <= 'z')
+				c -= 32;
 
 			return c;
 		}
