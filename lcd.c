@@ -22,7 +22,7 @@
  * LCD needs:
  *	10 select, (could be shared with keyboard?)
  *	8 data
- * 	CS1 can be wired high
+ * 	CS1 
  *	EN, DI, RW: 3
  *	V2: 
  */
@@ -64,7 +64,7 @@
 #define LCD_CS28	0xE6 // 16
 #define LCD_CS29	0xE7 // 16
 
-// Shared with LCD chip select lines
+// Shared with LCD data and chip select lines
 #define KEY_ROWS_PIN	PINC
 #define KEY_ROWS_DDR	DDRC
 #define KEY_ROWS_PORT	PORTC
@@ -265,7 +265,8 @@ lcd_init(void)
 	out(LCD_RESET, 1);
 
 	// Raise the master select line, since we always want to talk to
-	// all chips.
+	// all chips.  We leave it up since we'll be asserting each one
+	// individually in a little while.
 	out(LCD_CS1, 1);
 
 	lcd_on(LCD_CS20);
@@ -279,6 +280,9 @@ lcd_init(void)
 	lcd_on(LCD_CS28);
 	lcd_on(LCD_CS29);
 
+	// Bring LCD select back down since we don't want to
+	// talk to the LCD while strobing the keyboard.
+	out(LCD_CS1, 0);
 }
 
 
@@ -312,6 +316,8 @@ lcd_display(
 	uint8_t val
 )
 {
+	out(LCD_CS1, 1);
+
 	if (y < 32)
 	{
 		// Top half of the display
@@ -344,6 +350,8 @@ lcd_display(
 		else
 			lcd_doit(LCD_CS29, x - 200, y - 32, val);
 	}
+
+	out(LCD_CS1, 0);
 }
 
 #include "font.c"
@@ -586,7 +594,7 @@ main(void)
 				redraw();
 		}
 
-#if 0
+#if 1
 		uint8_t key = keyboard_scan();
 		if (key == 0xFF)
 		{
