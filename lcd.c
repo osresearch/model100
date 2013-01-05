@@ -53,16 +53,16 @@
 #define LCD_DATA_PIN	PINC
 #define LCD_DATA_DDR	DDRC
 
-#define LCD_CS20	0xF0 // 16
-#define LCD_CS21	0xF1 // 16
-#define LCD_CS22	0xF2 // 16
-#define LCD_CS23	0xF3 // 16
-#define LCD_CS24	0xF4 // 16
-#define LCD_CS25	0xF5 // 16
-#define LCD_CS26	0xF6 // 16
-#define LCD_CS27	0xF7 // 16
-#define LCD_CS28	0xE6 // 16
-#define LCD_CS29	0xE7 // 16
+#define LCD_CS20	0xF0
+#define LCD_CS21	0xF1
+#define LCD_CS22	0xF2
+#define LCD_CS23	0xF3
+#define LCD_CS24	0xF4
+#define LCD_CS25	0xF5
+#define LCD_CS26	0xF6
+#define LCD_CS27	0xF7
+#define LCD_CS28	0xE6
+#define LCD_CS29	0xE7
 
 // Shared with LCD data and chip select lines
 #define KEY_ROWS_PIN	PINC
@@ -72,6 +72,7 @@
 #define KEY_COLS_PIN	PINF
 #define KEY_COLS_DDR	DDRF
 #define KEY_COLS_PORT	PORTF
+#define KEY_COLS_FUNC	0xE6 // shared with LCD_CS8
 
 void send_str(const char *s);
 uint8_t recv_str(char *buf, uint8_t size);
@@ -367,62 +368,23 @@ keyboard_init(void)
 
 	KEY_COLS_DDR = 0xFF; // all output
 	KEY_COLS_PORT = 0xFF; // all high
+
+	// Pull the function key line high, too
+	ddr(KEY_COLS_FUNC, 1);
+	out(KEY_COLS_FUNC, 1);
 }
 
 
-static const uint8_t keycodes[] PROGMEM =
+static const uint8_t keycodes[8][8] PROGMEM =
 {
-	[0x0f] = 'a',
-	[0x03] = 'b',
-	[0x05] = 'c',
-	[0x0d] = 'd',
-	[0x15] = 'e',
-	[0x0c] = 'f',
-	[0x0b] = 'g',
-	[0x0a] = 'h',
-	[0x10] = 'i',
-	[0x09] = 'j',
-	[0x08] = 'k',
-	[0x00] = 'l',
-	[0x01] = 'm',
-	[0x02] = 'n',
-	[0x1f] = 'o',
-	[0x1e] = 'p',
-	[0x17] = 'q',
-	[0x14] = 'r',
-	[0x0e] = 's',
-	[0x13] = 't',
-	[0x11] = 'u',
-	[0x04] = 'v',
-	[0x16] = 'w',
-	[0x06] = 'x',
-	[0x12] = 'y',
-	[0x07] = 'z',
-
-	[0x27] = '1',
-	[0x26] = '2',
-	[0x25] = '3',
-	[0x24] = '4',
-	[0x23] = '5',
-	[0x22] = '6',
-	[0x21] = '7',
-	[0x20] = '8',
-	[0x2f] = '9',
-	[0x2e] = '0',
-	[0x2d] = '-',
-	[0x2c] = '=',
-
-	[0x34] = 27, // escape
-	[0x36] = 8, // backspace
-	[0x37] = ' ',
-	[0x35] = '\t',
-	[0x30] = '\n',
-	[0x1c] = ';',
-	[0x1b] = '\'',
-	[0x1a] = ',',
-	[0x19] = '.',
-	[0x18] = '/',
-	[0x1d] = '[',
+	[1] = "ZXCVBNML",
+	[2] = "ASDFGHJK",
+	[3] = "QWERTYUI",
+	[4] = "OP]:\"<>?",
+	[5] = "12345678",
+	[6] = "90-+^v<>", // need to handle arrows
+	[7] = " i\t\eLC0\n", // need to handle weird keys
+	[0] = "" // modifier keys; ignore for now
 };
 
 static void
@@ -433,6 +395,10 @@ keyboard_reset(void)
 
 	KEY_COLS_DDR = 0xFF; // leave as all output
 	KEY_COLS_PORT = 0x00; // all low
+
+	// Reset the function key modifier to pull down, too
+	ddr(KEY_COLS_FUNC, 1);
+	out(KEY_COLS_FUNC, 0);
 }
 
 
@@ -441,11 +407,11 @@ keyboard_scan(void)
 {
 	keyboard_init();
 
-	uint8_t mask = 1;
-	for (uint8_t col = 0 ; col < 8 ; col++, mask <<= 1)
+	uint8_t mask = 2;
+	for (uint8_t col = 1 ; col < 8 ; col++, mask <<= 1)
 	{
 		KEY_COLS_PORT = ~mask; // pull one down
-		_delay_us(1);
+		_delay_us(2);
 		uint8_t rows = ~KEY_ROWS_PIN;
 
 		if (!rows)
@@ -603,7 +569,7 @@ main(void)
 		if (key != last_key)
 		{
 			last_key = key;
-			char c = pgm_read_byte(&keycodes[key]);
+			char c = pgm_read_byte(&keycodes[key >> 3][key & 7]);
 			if (c != 0)
 			{
 				usb_serial_putchar(c);
