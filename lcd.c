@@ -64,11 +64,12 @@
 #define LCD_CS28	0xE6
 #define LCD_CS29	0xE7
 
-// Shared with LCD data and chip select lines
-#define KEY_ROWS_PIN	PINC
-#define KEY_ROWS_DDR	DDRC
-#define KEY_ROWS_PORT	PORTC
+// Can not be shared with the LCD
+#define KEY_ROWS_PIN	PINA
+#define KEY_ROWS_DDR	DDRA
+#define KEY_ROWS_PORT	PORTA
 
+// Shared with LCD chip select lines
 #define KEY_COLS_PIN	PINF
 #define KEY_COLS_DDR	DDRF
 #define KEY_COLS_PORT	PORTF
@@ -493,6 +494,36 @@ lcd_clear(void)
 }
 
 
+static uint8_t cur_col;
+static uint8_t cur_row;
+
+static void
+lcd_putc(
+	char c
+)
+{
+	if (c == '\e')
+	{
+		lcd_clear();
+		cur_row = cur_col = 0;
+	} else
+	if (c == '\n')
+	{
+		goto new_row;
+	} else {
+		lcd_char(cur_col, cur_row, c);
+		if (++cur_col == 40)
+			goto new_row;
+	}
+
+	return;
+
+new_row:
+	cur_row = (cur_row + 1) % 8;
+	cur_col = 0;
+}
+
+
 static void
 redraw(void)
 {
@@ -582,8 +613,6 @@ main(void)
 	redraw();
 
 	uint8_t last_key = 0;
-	uint8_t cur_row = 0;
-	uint8_t cur_col = 0;
 
 	char buf[16];
 	int off = 0;
@@ -593,6 +622,7 @@ main(void)
 		int c = usb_serial_getchar();
 		if (c != -1)
 		{
+			lcd_putc(c);
 			usb_serial_putchar(c);
 			if (c == '+')
 			{
@@ -616,9 +646,6 @@ main(void)
 				buf[off++] = '\n';
 				usb_serial_write(buf, off);
 			}
-
-			if (c == ' ')
-				redraw();
 		}
 
 		uint8_t key = keyboard_scan();
@@ -629,26 +656,11 @@ main(void)
 		if (key != last_key)
 		{
 			last_key = key;
+			lcd_putc(key);
+
 			if (key == '\n')
-			{
-				usb_serial_putchar('\n');
 				usb_serial_putchar('\r');
-				cur_row = (cur_row + 1) % 8;
-				cur_col = 0;
-			} else
-			if (key == '\e')
-			{
-				lcd_clear();
-				cur_row = cur_col = 0;
-			} else {
-				usb_serial_putchar(key);
-				lcd_char(cur_col, cur_row, key);
-				if (++cur_col == 40)
-				{
-					cur_row = (cur_row + 1) % 8;
-					cur_col = 0;
-				}
-			}
+			usb_serial_putchar(key);
 		}
 
 		if (bit_is_clear(TIFR0, OCF0A))
