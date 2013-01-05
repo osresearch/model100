@@ -115,21 +115,21 @@ lcd_command(
 	out(LCD_RW, 0); // write
 	out(LCD_EN, 1);
 	LCD_DATA_DDR = 0xFF;
+	_delay_us(2);
 	LCD_DATA_PORT = byte;
 	_delay_us(2);
 	out(LCD_EN, 0);
 
 	// value has been sent, go into read mode
-	_delay_us(5);
+	_delay_us(2);
 	LCD_DATA_PORT = 0x00; // no pull ups
 	LCD_DATA_DDR = 0x00;
 
 	out(LCD_DI, 0); // status command
 	out(LCD_RW, 1); // read
-	_delay_us(5);
 
 	out(LCD_EN, 1);
-	_delay_us(1);
+	_delay_us(10);
 	uint8_t rc = LCD_DATA_PIN;
 	out(LCD_EN, 0);
 
@@ -175,12 +175,15 @@ lcd_on(
 
 	// Turn on display
 	lcd_command(0x39, 0);
+	_delay_ms(1);
 
 	// Up mode
 	lcd_command(0x3B, 0);
+	_delay_ms(1);
 
 	// Start at location 0
 	lcd_command(0x00, 0);
+	_delay_ms(1);
 
 	out(pin, 0);
 }
@@ -457,6 +460,34 @@ keyboard_scan(void)
 }
 
 
+static void
+redraw(void)
+{
+	static uint8_t val;
+
+#if 1
+	for (uint8_t j = 0 ; j < 8 ; j++)
+	{
+		for (uint8_t i = 0 ; i < 40 ; i++)
+		{
+			val = (val + 1) & 0x3F;
+			lcd_char(i, j, val + '0');
+		}
+	}
+#else
+	for (uint8_t y = 0 ; y < 64 ; y += 8)
+	{
+		for (uint8_t x = 0 ; x < 240 ; x++)
+		{
+			lcd_display(x, y, val++);
+		}
+	}
+#endif
+
+	val++;
+}
+
+
 int
 main(void)
 {
@@ -515,9 +546,8 @@ main(void)
 	usb_serial_flush_input();
 
 	send_str(PSTR("lcd model100\r\n"));
-	uint8_t i = 0;
-	uint8_t j = 0;
-	uint8_t x = 0;
+	redraw();
+
 	uint8_t last_key = 0;
 
 	char buf[16];
@@ -551,15 +581,9 @@ main(void)
 				buf[off++] = '\n';
 				usb_serial_write(buf, off);
 			}
-		}
 
-		lcd_char(i, j, x);
-		if (i++ == 40)
-		{
-			i = 0;
-			x = (x + 1) & 0x7F;
-			if (j++ == 8)
-				j = 0;
+			if (c == ' ')
+				redraw();
 		}
 
 #if 0
