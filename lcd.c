@@ -423,6 +423,8 @@ keyboard_reset(void)
  * \todo Scans only one column per call?
  *
  * \todo Multiple keys held?
+ *
+ * \return 0 if no keys are held down
  */
 static uint8_t
 keyboard_scan(void)
@@ -459,17 +461,22 @@ keyboard_scan(void)
 				mods & KEY_MOD_SHIFT ? shift_codes : key_codes
 				)[col][row]);
 
-			// If we are caps locked, switch lower toupper
-			if ((mods & KEY_MOD_CAPS) == 1
-			&& 'a' <= c && c <= 'z')
-				c -= 32;
+			// If we are caps locked, switch lower and upper
+			if (mods & KEY_MOD_CAPS)
+			{
+				if ('a' <= c && c <= 'z')
+					c -= 32;
+				else
+				if ('A' <= c && c <= 'Z')
+					c += 32;
+			}
 
 			return c;
 		}
 	}
 
 	keyboard_reset();
-	return 0xFF;
+	return 0;
 }
 
 
@@ -599,18 +606,18 @@ main(void)
 				redraw();
 		}
 
-#if 1
 		uint8_t key = keyboard_scan();
-		if (key == 0xFF)
+		if (key == 0)
 		{
-			last_key = 0xFF;
+			last_key = 0;
 		} else
 		if (key != last_key)
 		{
 			last_key = key;
+			if (key == '\n')
+				usb_serial_putchar('\r');
 			usb_serial_putchar(key);
 		}
-#endif
 
 		if (bit_is_clear(TIFR0, OCF0A))
 			continue;
