@@ -189,6 +189,10 @@ lcd_on(
 	lcd_command(0x00, 0);
 	_delay_ms(1);
 
+	// Display start page 0
+	lcd_command(0x3E, 0);
+	_delay_ms(1);
+
 	out(pin, 0);
 }
 
@@ -481,6 +485,15 @@ keyboard_scan(void)
 
 
 static void
+lcd_clear(void)
+{
+	for (uint8_t j = 0 ; j < 8 ; j++)
+		for (uint8_t i = 0 ; i < 40 ; i++)
+			lcd_char(i, j, ' ');
+}
+
+
+static void
 redraw(void)
 {
 	static uint8_t val;
@@ -569,6 +582,8 @@ main(void)
 	redraw();
 
 	uint8_t last_key = 0;
+	uint8_t cur_row = 0;
+	uint8_t cur_col = 0;
 
 	char buf[16];
 	int off = 0;
@@ -615,8 +630,25 @@ main(void)
 		{
 			last_key = key;
 			if (key == '\n')
+			{
+				usb_serial_putchar('\n');
 				usb_serial_putchar('\r');
-			usb_serial_putchar(key);
+				cur_row = (cur_row + 1) % 8;
+				cur_col = 0;
+			} else
+			if (key == '\e')
+			{
+				lcd_clear();
+				cur_row = cur_col = 0;
+			} else {
+				usb_serial_putchar(key);
+				lcd_char(cur_col, cur_row, key);
+				if (++cur_col == 40)
+				{
+					cur_row = (cur_row + 1) % 8;
+					cur_col = 0;
+				}
+			}
 		}
 
 		if (bit_is_clear(TIFR0, OCF0A))
