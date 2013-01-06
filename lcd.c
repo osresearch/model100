@@ -672,10 +672,10 @@ vt100_process(
 			// <ESC>[{arg};{arg}m == set attributes
 			// 0 == clear
 			// no others are supported
-			if (arg1 == 0)
-				vt100_inverse = 0;
-			if (arg2 != 0)
+			if (arg2 == 7)
 				vt100_inverse = 0x80;
+			else // if (arg1 == 0)
+				vt100_inverse = 0;
 		}
 	} else
 	if (vt100_state == 10)
