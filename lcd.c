@@ -89,7 +89,7 @@ void send_str(const char *s);
 uint8_t recv_str(char *buf, uint8_t size);
 void parse_and_execute_command(const char *buf, uint8_t num);
 
-static uint8_t
+static inline uint8_t
 hexdigit(
 	uint8_t x
 )
@@ -151,7 +151,7 @@ lcd_command(
 }
 
 
-static uint8_t
+static inline uint8_t
 lcd_write(
 	const uint8_t byte
 )
@@ -398,7 +398,7 @@ static const uint8_t key_codes[8][8] PROGMEM =
 	[3] = "qwertyui",
 	[4] = "op[;',./",
 	[5] = "12345678",
-	[6] = "90-=^v<>", // need to handle arrows
+	[6] = "90-=\x92\x93\x90\x91", // need to handle arrows
 	[7] = " \x8\t\eLC0\n", // need to handle weird keys
 };
 
@@ -411,7 +411,7 @@ static const uint8_t shift_codes[8][8] PROGMEM =
 	[3] = "QWERTYUI",
 	[4] = "OP]:\"<>?",
 	[5] = "!@#$%^&*",
-	[6] = "()_+^v<>", // need to handle arrows
+	[6] = "()_+\x92\x93\x90\x91", // need to handle arrows
 	[7] = " \x8\t\eLC0\n", // need to handle weird keys
 };
 
@@ -504,8 +504,10 @@ keyboard_scan(void)
 	return 0;
 }
 
+
+// These might change if we use a smaller font.
 #define MAX_COLS 40
-#define MAX_ROWS 7
+#define MAX_ROWS 8
 
 static uint8_t cur_col;
 static uint8_t cur_row;
@@ -544,10 +546,12 @@ vt100_process(
 {
 	static uint8_t arg1;
 	static uint8_t arg2;
+	static uint8_t vt100_query;
 
 	if (vt100_state == 1)
 	{
 		arg1 = arg2 = 0;
+		vt100_query = 0;
 
 		if (c == 'c')
 		{
@@ -558,6 +562,12 @@ vt100_process(
 		{
 			vt100_state = 2;
 			return;
+		} else
+		if (c == '(' || c == ')')
+		{
+			// We mostly ignore these
+			vt100_state = 10;
+			return;
 		}
 	} else
 	if (vt100_state == 2)
@@ -565,6 +575,12 @@ vt100_process(
 		if (c == ';')
 		{
 			vt100_state = 3;
+			return;
+		} else
+		if (c == '?')
+		{
+			vt100_query = 1;
+			return;
 		} else
 		if ('0' <= c && c <= '9')
 		{
@@ -573,9 +589,51 @@ vt100_process(
 		} else
 		if (c == 'H')
 		{
-			// <ESC>[H == clear the screen
-			lcd_clear();
-		}
+			// <ESC>[H == home cursor
+			cur_row = cur_col = 0;
+		} else
+		if (c == 'm')
+		{
+			// <ESC>[{arg}m == set attributes
+			// We don't support any attributes...
+		} else
+		if (c == 'm')
+		{
+			// <ESC>[{arg}l == set some sort of attributes
+			// We don't support any attributes...
+		} else
+		if (c == 'A')
+		{
+			// <ESC>[{arg}A == move N lines up
+			if (cur_row < arg1)
+				cur_row = 0;
+			else
+				cur_row -= arg1;
+		} else
+		if (c == 'B')
+		{
+			// <ESC>[{arg}B == move N lines down
+			if (cur_row + arg1 >= MAX_ROWS)
+				cur_row = MAX_ROWS-1;
+			else
+				cur_row += arg1;
+		} else
+		if (c == 'D')
+		{
+			// <ESC>[{arg}D == move N lines to the left
+			if (cur_col < arg1)
+				cur_col = 0;
+			else
+				cur_col -= arg1;
+		} else
+		if (c == 'C')
+		{
+			// <ESC>[{arg}C == move N lines to the right
+			if (cur_col + arg1 >= MAX_COLS)
+				cur_col = MAX_COLS-1;
+			else
+				cur_col += arg1;
+		} else
 		if (c == 'J')
 		{
 			// <ESC>[{arg}J == clear the screen
@@ -585,7 +643,7 @@ vt100_process(
 			// we just do a full clear
 			lcd_clear();
 			cur_row = cur_col = 0;
-		}
+		} else
 		if (c == 'K')
 		{
 			// <ESC>[K == erase to end of line
@@ -603,13 +661,18 @@ vt100_process(
 		if (c == 'H')
 		{
 			// <ESC>[{row};{col}H == goto position row,col
-			cur_row = arg1;
-			cur_col = arg2;
+			// vt100 is 1 indexed, we are 0 indexed.
+			cur_row = arg1 > 0 ? arg1 - 1 : 0;
+			cur_col = arg2 > 0 ? arg2 - 1 : 0;
 			if (cur_row >= MAX_ROWS)
 				cur_row = MAX_ROWS - 1;
 			if (cur_col >= MAX_COLS)
 				cur_col = MAX_COLS - 1;
 		}
+	} else
+	if (vt100_state == 10)
+	{
+		// We really don't care.
 	}
 
 	// If we have fallen through to here, we are done and should
@@ -635,6 +698,10 @@ lcd_putc(
 		return;
 	}
 
+	if (c == '\r')
+	{
+		cur_col = 0;
+	} else
 	if (c == '\n')
 	{
 		goto new_row;
@@ -643,6 +710,11 @@ lcd_putc(
 	{
 		// Bell!
 		buzzer();
+	} else
+	if (c == '\xE' || c == '\xF')
+	{
+		// We do not support alternate char sets for now.
+		// ignore.
 	} else
 	if (c == '\x8')
 	{
@@ -694,6 +766,30 @@ redraw(void)
 #endif
 
 	val++;
+}
+
+
+static void
+key_special(
+	const uint8_t key
+)
+{
+	if (key == 0x81)
+	{
+		// f1 == redraw everything
+		lcd_clear();
+		cur_row = cur_col = vt100_state = 0;
+		return;
+	}
+
+	if (0x90 <= key && key <= 0x93)
+	{
+		uint8_t buf[2];
+		buf[0] = '\e';
+		buf[1] = 'A' + key - 0x90;
+		usb_serial_write(buf, 2);
+		return;
+	}
 }
 
 
@@ -759,9 +855,6 @@ main(void)
 
 	uint8_t last_key = 0;
 
-	char buf[16];
-	int off = 0;
-
 	while (1)
 	{
 		int c = usb_serial_getchar();
@@ -803,11 +896,12 @@ main(void)
 		if (key != last_key)
 		{
 			last_key = key;
-			if (key == 0x01)
+			if (key >= 0x80)
 			{
-				lcd_clear();
+				// Special char!
+				key_special(key);
 			} else {
-				//lcd_putc(key);
+				// Normal, send it.
 				usb_serial_putchar(key);
 			}
 		}

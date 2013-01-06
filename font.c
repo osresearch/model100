@@ -143,6 +143,8 @@ const char font[][6] PROGMEM =
 };
 
 
+#if 0
+// \todo: Make use of this
 static void
 lcd_select(
 	uint8_t x,
@@ -183,6 +185,7 @@ lcd_select(
 			out(LCD_CS29, val);
 	}
 }
+#endif
 
 
 void
