@@ -520,6 +520,13 @@ lcd_clear(void)
 }
 
 
+static void
+buzzer(void)
+{
+	// todo: use PWM on the buzzer
+}
+
+
 /** VT100ish emulation.
  *
  * A simplistic approach to VT100 emulation.  Only a few commands
@@ -582,7 +589,7 @@ vt100_process(
 		if (c == 'K')
 		{
 			// <ESC>[K == erase to end of line
-			for (uint8_t x = cur_col ; cur_col < MAX_COLS ; cur_col++)
+			for (uint8_t x = cur_col ; x < MAX_COLS ; x++)
 				lcd_char(x, cur_row, ' ');
 		}
 	} else
@@ -631,6 +638,23 @@ lcd_putc(
 	if (c == '\n')
 	{
 		goto new_row;
+	} else
+	if (c == '\x7')
+	{
+		// Bell!
+		buzzer();
+	} else
+	if (c == '\x8')
+	{
+		// erase the old char and backup
+		lcd_char(cur_col, cur_row, ' ');
+		if (cur_col > 0)
+		{
+			cur_col--;
+		} else {
+			cur_col = 40;
+			cur_row = (cur_row - 1 + MAX_ROWS) % MAX_ROWS;
+		}
 	} else {
 		lcd_char(cur_col, cur_row, c);
 		if (++cur_col == 40)
