@@ -75,8 +75,15 @@
 #define KEY_COLS_PORT	PORTF
 #define KEY_COLS_MOD	0xE6 // shared with LCD_CS8
 
+// The bits on the modifier column
 #define KEY_MOD_SHIFT	0x01
+#define KEY_MOD_CONTROL	0x02
+#define KEY_MOD_GRAPH	0x04
+#define KEY_MOD_CODE 	0x08
+#define KEY_MOD_NUMLOCK	0x10
 #define KEY_MOD_CAPS	0x20
+#define KEY_MOD_NC	0x40
+#define KEY_MOD_BREAK	0x80
 
 void send_str(const char *s);
 uint8_t recv_str(char *buf, uint8_t size);
@@ -385,26 +392,27 @@ keyboard_init(void)
 
 static const uint8_t key_codes[8][8] PROGMEM =
 {
-	[0] = "", // function keys; ignore for now
+	[0] = "\x81\x82\x83\x84\x85\x86\x87\x88", // function keys
 	[1] = "zxcvbnml",
 	[2] = "asdfghjk",
 	[3] = "qwertyui",
 	[4] = "op[;',./",
 	[5] = "12345678",
 	[6] = "90-=^v<>", // need to handle arrows
-	[7] = " i\t\eLC0\n", // need to handle weird keys
+	[7] = " \x8\t\eLC0\n", // need to handle weird keys
 };
+
 
 static const uint8_t shift_codes[8][8] PROGMEM =
 {
-	[0] = "", // function keys; ignore for now
+	[0] = "\x81\x82\x83\x84\x85\x86\x87\x88", // function keys
 	[1] = "ZXCVBNML",
 	[2] = "ASDFGHJK",
 	[3] = "QWERTYUI",
 	[4] = "OP]:\"<>?",
 	[5] = "!@#$%^&*",
 	[6] = "()_+^v<>", // need to handle arrows
-	[7] = " i\t\eLC0\n", // need to handle weird keys
+	[7] = " \x8\t\eLC0\n", // need to handle weird keys
 };
 
 
@@ -463,8 +471,19 @@ keyboard_scan(void)
 				continue;
 
 			char c = pgm_read_byte(&(
-				mods & KEY_MOD_SHIFT ? shift_codes : key_codes
-				)[col][row]);
+				(mods & KEY_MOD_SHIFT) && !(mods & KEY_MOD_CONTROL)
+				? shift_codes
+				: key_codes
+			)[col][row]);
+
+			// If control is held, only allow a-z
+			// Send nothing, otherwise
+			if (mods & KEY_MOD_CONTROL)
+			{
+				if ('a' <= c && c <= 'z')
+					return 0x1 + c - 'a';
+				return 0;
+			}
 
 			// If we are caps locked, switch lower and upper
 			if (mods & KEY_MOD_CAPS)
@@ -476,6 +495,7 @@ keyboard_scan(void)
 					c += 32;
 			}
 
+
 			return c;
 		}
 	}
@@ -484,6 +504,12 @@ keyboard_scan(void)
 	return 0;
 }
 
+#define MAX_COLS 40
+#define MAX_ROWS 7
+
+static uint8_t cur_col;
+static uint8_t cur_row;
+static uint8_t vt100_state;
 
 static void
 lcd_clear(void)
@@ -494,8 +520,97 @@ lcd_clear(void)
 }
 
 
-static uint8_t cur_col;
-static uint8_t cur_row;
+/** VT100ish emulation.
+ *
+ * A simplistic approach to VT100 emulation.  Only a few commands
+ * are supported:
+ *   Erase
+ *   Home
+ *   Cursor up
+ *   Cursor down
+ */
+
+static void
+vt100_process(
+	char c
+)
+{
+	static uint8_t arg1;
+	static uint8_t arg2;
+
+	if (vt100_state == 1)
+	{
+		arg1 = arg2 = 0;
+
+		if (c == 'c')
+		{
+			lcd_clear();
+			cur_row = cur_col = 0;
+		} else
+		if (c == '[')
+		{
+			vt100_state = 2;
+			return;
+		}
+	} else
+	if (vt100_state == 2)
+	{
+		if (c == ';')
+		{
+			vt100_state = 3;
+		} else
+		if ('0' <= c && c <= '9')
+		{
+			arg1 = (arg1 * 10) + c - '0';
+			return;
+		} else
+		if (c == 'H')
+		{
+			// <ESC>[H == clear the screen
+			lcd_clear();
+		}
+		if (c == 'J')
+		{
+			// <ESC>[{arg}J == clear the screen
+			// 0 == to the bottom
+			// 1 == to the top
+			// 2 == entire screen, and move home
+			// we just do a full clear
+			lcd_clear();
+			cur_row = cur_col = 0;
+		}
+		if (c == 'K')
+		{
+			// <ESC>[K == erase to end of line
+			for (uint8_t x = cur_col ; cur_col < MAX_COLS ; cur_col++)
+				lcd_char(x, cur_row, ' ');
+		}
+	} else
+	if (vt100_state == 3)
+	{
+		if ('0' <= c && c <= '9')
+		{
+			arg2 = (arg2 * 10) + c - '0';
+			return;
+		} else
+		if (c == 'H')
+		{
+			// <ESC>[{row};{col}H == goto position row,col
+			cur_row = arg1;
+			cur_col = arg2;
+			if (cur_row >= MAX_ROWS)
+				cur_row = MAX_ROWS - 1;
+			if (cur_col >= MAX_COLS)
+				cur_col = MAX_COLS - 1;
+		}
+	}
+
+	// If we have fallen through to here, we are done and should
+	// exit vt100 mode.
+	vt100_state = 0;
+	return;
+}
+
 
 static void
 lcd_putc(
@@ -504,9 +619,15 @@ lcd_putc(
 {
 	if (c == '\e')
 	{
-		lcd_clear();
-		cur_row = cur_col = 0;
+		vt100_state = 1;
+		return;
 	} else
+	if (vt100_state)
+	{
+		vt100_process(c);
+		return;
+	}
+
 	if (c == '\n')
 	{
 		goto new_row;
@@ -623,6 +744,7 @@ main(void)
 		if (c != -1)
 		{
 			lcd_putc(c);
+/*
 			usb_serial_putchar(c);
 			if (c == '+')
 			{
@@ -646,6 +768,7 @@ main(void)
 				buf[off++] = '\n';
 				usb_serial_write(buf, off);
 			}
+*/
 		}
 
 		uint8_t key = keyboard_scan();
@@ -656,11 +779,13 @@ main(void)
 		if (key != last_key)
 		{
 			last_key = key;
-			lcd_putc(key);
-
-			if (key == '\n')
-				usb_serial_putchar('\r');
-			usb_serial_putchar(key);
+			if (key == 0x01)
+			{
+				lcd_clear();
+			} else {
+				//lcd_putc(key);
+				usb_serial_putchar(key);
+			}
 		}
 
 		if (bit_is_clear(TIFR0, OCF0A))
