@@ -41,11 +41,16 @@
 
 
 # Target file name (without extension).
-TARGET = lcd
+TARGET = model100
 
 
 # List C source files here. (C dependencies are automatically generated.)
-SRC =	$(TARGET).c \
+SRC =	\
+	main.c \
+	lcd.c \
+	vt100.c \
+	font.c \
+	keyboard.c \
 	bits.c \
 	usb_serial.c \
 
