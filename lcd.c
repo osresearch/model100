@@ -512,6 +512,7 @@ keyboard_scan(void)
 static uint8_t cur_col;
 static uint8_t cur_row;
 static uint8_t vt100_state;
+static uint8_t vt100_inverse;
 
 static void
 lcd_clear(void)
@@ -595,12 +596,9 @@ vt100_process(
 		if (c == 'm')
 		{
 			// <ESC>[{arg}m == set attributes
-			// We don't support any attributes...
-		} else
-		if (c == 'm')
-		{
-			// <ESC>[{arg}l == set some sort of attributes
-			// We don't support any attributes...
+			// 0 == clear
+			if (arg1 == 0)
+				vt100_inverse = 0;
 		} else
 		if (c == 'A')
 		{
@@ -668,6 +666,16 @@ vt100_process(
 				cur_row = MAX_ROWS - 1;
 			if (cur_col >= MAX_COLS)
 				cur_col = MAX_COLS - 1;
+		} else
+		if (c == 'm')
+		{
+			// <ESC>[{arg};{arg}m == set attributes
+			// 0 == clear
+			// no others are supported
+			if (arg1 == 0)
+				vt100_inverse = 0;
+			if (arg2 != 0)
+				vt100_inverse = 0x80;
 		}
 	} else
 	if (vt100_state == 10)
@@ -711,10 +719,21 @@ lcd_putc(
 		// Bell!
 		buzzer();
 	} else
-	if (c == '\xE' || c == '\xF')
+	if (c == '\xF')
+	{
+		// ^O or ASCII SHIFT-IN (SI) switches sets?
+/*
+		if (vt100_inverse)
+			vt100_inverse = 0;
+		else
+			vt100_inverse = 0x80;
+*/
+	} else
+ 	if (c == '\xE')
 	{
 		// We do not support alternate char sets for now.
 		// ignore.
+		// ^P or ASCII SHIFT-OUT (SO) switches sets, too
 	} else
 	if (c == '\x8')
 	{
@@ -728,7 +747,7 @@ lcd_putc(
 			cur_row = (cur_row - 1 + MAX_ROWS) % MAX_ROWS;
 		}
 	} else {
-		lcd_char(cur_col, cur_row, c);
+		lcd_char(cur_col, cur_row, c | vt100_inverse);
 		if (++cur_col == 40)
 			goto new_row;
 	}

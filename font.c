@@ -197,6 +197,13 @@ lcd_char(
 {
 	uint8_t x = col * 6;
 	uint8_t y = row * 8;
+	uint8_t inverse = 0;
+
+	if (c >= 0x80)
+	{
+		c -= 0x80;
+		inverse = 1;
+	}
 
 	const char * f = font[c];
 
@@ -205,6 +212,9 @@ lcd_char(
 		// this would be faster if we used the auto-increment
 		// functions, but has lots of special cases for crossing
 		// display boundaries.
-		lcd_display(x, y, pgm_read_byte(&f[i]));
+		uint8_t bits = pgm_read_byte(&f[i]);
+		if (inverse)
+			bits = ~bits;
+		lcd_display(x, y, bits);
 	}
 }
