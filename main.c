@@ -103,6 +103,34 @@ key_special(
 }
 
 
+
+/** Hardware serial port interrupt handler */
+#define RX_QUEUE_SIZE 128
+static volatile uint8_t rx_head; // where the next will be written
+static volatile uint8_t rx_tail; // where the next will be read
+static uint8_t rx_buf[RX_QUEUE_SIZE];
+
+ISR(USART1_RX_vect)
+{ 
+	char c = UDR1;
+	if (rx_head == rx_tail + RX_QUEUE_SIZE)
+		return;
+	rx_buf[rx_head++ % RX_QUEUE_SIZE] = c;
+}
+
+
+int
+serial_getchar(void)
+{
+	uint8_t tail = rx_tail;
+	if (rx_head == tail)
+		return -1;
+	char c = rx_buf[tail % RX_QUEUE_SIZE];
+	rx_tail = tail + 1;
+	return c;
+}
+
+
 int
 main(void)
 {
@@ -113,11 +141,20 @@ main(void)
 	// Disable the ADC
 	ADMUX = 0;
 
+#ifdef CONFIG_USB_SERIAL
 	// initialize the USB, and then wait for the host
 	// to set configuration.  If the Teensy is powered
 	// without a PC connected to the USB port, this 
 	// will wait forever.
 	usb_init();
+#else
+	// We're not using USB, so setup the normal serial port
+	// 115.2k, n81, no interrupts
+	UBRR1 = 8; // 115.2k
+	UCSR1B = (1 << RXEN1) | (1 << TXEN1) | (1 << RXCIE1);
+	UCSR1C = (0 << USBS1) | (3 << UCSZ10);
+	sei();
+#endif
 
 	// LED is an output; will be pulled down once connected
 	ddr(LED, 1);
@@ -144,6 +181,7 @@ main(void)
         OCR0A = 125;
         sbi(TIFR0, OCF0A); // reset the overflow bit
 
+#ifdef CONFIG_USB_SERIAL
 	while (!usb_configured())
 		;
 
@@ -160,13 +198,19 @@ main(void)
 	usb_serial_flush_input();
 
 	send_str(PSTR("lcd model100\r\n"));
+#endif
+
 	fill_screen();
 
 	uint8_t last_key = 0;
 
 	while (1)
 	{
+#ifdef CONFIG_USB_SERIAL
 		int c = usb_serial_getchar();
+#else
+		int c = serial_getchar();
+#endif
 		if (c != -1)
 		{
 			vt100_putc(c);
@@ -185,8 +229,15 @@ main(void)
 				// Special char!
 				key_special(key);
 			} else {
-				// Normal, send it.
+#ifdef CONFIG_USB_SERIAL
+				// Normal, send it USB
 				usb_serial_putchar(key);
+#else
+				// Normal, send it serial
+				while (bit_is_set(UCSR1A, UDRE1))
+					;
+				UDR1 = key;
+#endif
 			}
 		}
 
