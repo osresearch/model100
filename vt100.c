@@ -273,6 +273,25 @@ vt100_putc(
 	return;
 
 new_row:
-	cur_row = (cur_row + 1) % 8;
+	if (cur_row < MAX_ROWS-1)
+	{
+		cur_row++;
+		cur_col = 0;
+		return;
+	}
+
+	// We are scrolling.  Omg.  How do we do this.
 	cur_col = 0;
+	for (int i = 0 ; i < MAX_ROWS-1 ; i++)
+	{
+		for (int j = 0 ; j < 240 ; j++)
+		{
+			uint8_t bits = lcd_read(j, (i+1)*8);
+			lcd_display(j, i*8, bits);
+		}
+	}
+
+	// Clear the last row
+	for (uint8_t x = 0 ; x < MAX_COLS ; x++)
+		font_draw(x, cur_row, ' ', FONT_NORMAL);
 }

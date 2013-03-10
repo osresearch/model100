@@ -16,7 +16,7 @@ extern void
 lcd_init(void);
 
 
-/** Display val at position x,y.
+/** Display vertical column val at position x,y.
  *
  * x is ranged 0 to 240, for each pixel
  * y is ranged 0 to 64, rounded to 8
@@ -27,6 +27,14 @@ lcd_display(
 	uint8_t x,
 	uint8_t y,
 	uint8_t val
+);
+
+
+/** Read a vertical colum at position x,y */
+extern uint8_t
+lcd_read(
+	uint8_t x,
+	uint8_t y
 );
 
 

@@ -56,17 +56,37 @@
 static uint8_t
 lcd_command(
 	const uint8_t byte,
-	const uint8_t di // 0 == instruction, 1 == data
+	const uint8_t di, // 0 == instruction, 1 == data
+	const uint8_t write_dir
 )
 {
+	uint8_t rc = 0;
+
 	out(LCD_DI, di);
-	out(LCD_RW, 0); // write
+	out(LCD_RW, !write_dir); // write
 	out(LCD_EN, 1);
-	LCD_DATA_DDR = 0xFF;
+	if (write_dir)
+	{
+		LCD_DATA_DDR = 0xFF;
+	} else {
+		LCD_DATA_DDR = 0x00; // inputs
+		LCD_DATA_PORT = 0x00; // no pull ups
+	}
+
 	_delay_us(2);
-	LCD_DATA_PORT = byte;
+
+	if (write_dir)
+	{
+		LCD_DATA_PORT = byte;
+	} else {
+		rc = LCD_DATA_PIN;
+	}
+
 	_delay_us(2);
 	out(LCD_EN, 0);
+
+	if (!write_dir)
+		return rc;
 
 	// value has been sent, go into read mode
 	_delay_us(2);
@@ -78,7 +98,7 @@ lcd_command(
 
 	out(LCD_EN, 1);
 	_delay_us(10);
-	uint8_t rc = LCD_DATA_PIN;
+	rc = LCD_DATA_PIN;
 	out(LCD_EN, 0);
 
 	// Everything looks good.
@@ -92,7 +112,7 @@ lcd_write(
 	const uint8_t byte
 )
 {
-	return lcd_command(byte, 1);
+	return lcd_command(byte, 1, 1);
 }
 
 
@@ -122,19 +142,19 @@ lcd_on(
 	out(pin, 1);
 
 	// Turn on display
-	lcd_command(0x39, 0);
+	lcd_command(0x39, 0, 1);
 	_delay_ms(1);
 
 	// Up mode
-	lcd_command(0x3B, 0);
+	lcd_command(0x3B, 0, 1);
 	_delay_ms(1);
 
 	// Start at location 0
-	lcd_command(0x00, 0);
+	lcd_command(0x00, 0, 1);
 	_delay_ms(1);
 
 	// Display start page 0
-	lcd_command(0x3E, 0);
+	lcd_command(0x3E, 0, 1);
 	_delay_ms(1);
 
 	out(pin, 0);
@@ -238,21 +258,25 @@ lcd_init(void)
 }
 
 
-/** Enable the one chip, select the address and send the byte.
+/** Enable the one chip, select the address and send/recv the byte.
  *
- * x goes from 0 to 50, y goes from 0 to 32, rounded to 8.*/
-static void
+ * x goes from 0 to 50, y goes from 0 to 32, rounded to 8.
+ */
+static uint8_t
 lcd_doit(
 	const uint8_t pin,
 	uint8_t x,
 	uint8_t y,
-	uint8_t val
+	uint8_t val,
+	uint8_t write_dir
 )
 {
 	out(pin, 1);
-	lcd_command((y >> 3) << 6 | x, 0);
-	lcd_command(val, 1);
+	lcd_command((y >> 3) << 6 | x, 0, 1);
+	uint8_t rc = lcd_command(val, 1, write_dir);
 	out(pin, 0);
+
+	return rc;
 }
 
 
@@ -261,6 +285,54 @@ lcd_doit(
  * x is ranged 0 to 240, for each pixel
  * y is ranged 0 to 64, rounded to 8
  */
+static uint8_t
+_lcd_select(
+	uint8_t x,
+	uint8_t y,
+	uint8_t val,
+	uint8_t write_dir
+)
+{
+	uint8_t rc;
+	out(LCD_CS1, 1);
+
+	if (y < 32)
+	{
+		// Top half of the display
+		if (x < 50)
+			rc = lcd_doit(LCD_CS20, x - 0, y - 0, val, write_dir);
+		else
+		if (x < 100)
+			rc = lcd_doit(LCD_CS21, x - 50, y - 0, val, write_dir);
+		else
+		if (x < 150)
+			rc = lcd_doit(LCD_CS22, x - 100, y - 0, val, write_dir);
+		else
+		if (x < 200)
+			rc = lcd_doit(LCD_CS23, x - 150, y - 0, val, write_dir);
+		else
+			rc = lcd_doit(LCD_CS24, x - 200, y - 0, val, write_dir);
+	} else {
+		// Bottom half of the display
+		if (x < 50)
+			rc = lcd_doit(LCD_CS25, x - 0, y - 32, val, write_dir);
+		else
+		if (x < 100)
+			rc = lcd_doit(LCD_CS26, x - 50, y - 32, val, write_dir);
+		else
+		if (x < 150)
+			rc = lcd_doit(LCD_CS27, x - 100, y - 32, val, write_dir);
+		else
+		if (x < 200)
+			rc = lcd_doit(LCD_CS28, x - 150, y - 32, val, write_dir);
+		else
+			rc = lcd_doit(LCD_CS29, x - 200, y - 32, val, write_dir);
+	}
+
+	out(LCD_CS1, 0);
+	return rc;
+}
+
 void
 lcd_display(
 	uint8_t x,
@@ -268,40 +340,14 @@ lcd_display(
 	uint8_t val
 )
 {
-	out(LCD_CS1, 1);
+	_lcd_select(x, y, val, 1);
+}
 
-	if (y < 32)
-	{
-		// Top half of the display
-		if (x < 50)
-			lcd_doit(LCD_CS20, x - 0, y - 0, val);
-		else
-		if (x < 100)
-			lcd_doit(LCD_CS21, x - 50, y - 0, val);
-		else
-		if (x < 150)
-			lcd_doit(LCD_CS22, x - 100, y - 0, val);
-		else
-		if (x < 200)
-			lcd_doit(LCD_CS23, x - 150, y - 0, val);
-		else
-			lcd_doit(LCD_CS24, x - 200, y - 0, val);
-	} else {
-		// Bottom half of the display
-		if (x < 50)
-			lcd_doit(LCD_CS25, x - 0, y - 32, val);
-		else
-		if (x < 100)
-			lcd_doit(LCD_CS26, x - 50, y - 32, val);
-		else
-		if (x < 150)
-			lcd_doit(LCD_CS27, x - 100, y - 32, val);
-		else
-		if (x < 200)
-			lcd_doit(LCD_CS28, x - 150, y - 32, val);
-		else
-			lcd_doit(LCD_CS29, x - 200, y - 32, val);
-	}
-
-	out(LCD_CS1, 0);
+uint8_t
+lcd_read(
+	uint8_t x,
+	uint8_t y
+)
+{
+	_lcd_select(x, y, 0, 0);
 }
