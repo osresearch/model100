@@ -282,9 +282,9 @@ new_row:
 
 	// We are scrolling.  Omg.  How do we do this.
 	cur_col = 0;
-	for (int i = 0 ; i < MAX_ROWS-1 ; i++)
+	for (int j = 0 ; j < 240 ; j++)
 	{
-		for (int j = 0 ; j < 240 ; j++)
+		for (int i = 0 ; i < MAX_ROWS-1 ; i++)
 		{
 			uint8_t bits = lcd_read(j, (i+1)*8);
 			lcd_display(j, i*8, bits);

@@ -64,29 +64,27 @@ lcd_command(
 
 	out(LCD_DI, di);
 	out(LCD_RW, !write_dir); // write
-	out(LCD_EN, 1);
 	if (write_dir)
 	{
+		out(LCD_EN, 1);
 		LCD_DATA_DDR = 0xFF;
 	} else {
 		LCD_DATA_DDR = 0x00; // inputs
 		LCD_DATA_PORT = 0x00; // no pull ups
+		out(LCD_EN, 1);
 	}
-
-	_delay_us(2);
 
 	if (write_dir)
 	{
+		_delay_us(2);
 		LCD_DATA_PORT = byte;
 	} else {
+		_delay_us(2);
 		rc = LCD_DATA_PIN;
 	}
 
 	_delay_us(2);
 	out(LCD_EN, 0);
-
-	if (!write_dir)
-		return rc;
 
 	// value has been sent, go into read mode
 	_delay_us(2);
@@ -98,7 +96,8 @@ lcd_command(
 
 	out(LCD_EN, 1);
 	_delay_us(10);
-	rc = LCD_DATA_PIN;
+	if (write_dir)
+		rc = LCD_DATA_PIN;
 	out(LCD_EN, 0);
 
 	// Everything looks good.
@@ -271,9 +270,13 @@ lcd_doit(
 	uint8_t write_dir
 )
 {
+	uint8_t rc = 0;
+
 	out(pin, 1);
 	lcd_command((y >> 3) << 6 | x, 0, 1);
-	uint8_t rc = lcd_command(val, 1, write_dir);
+	lcd_command(val, 1, write_dir);
+	if (!write_dir)
+		rc = lcd_command(val, 1, 0); // get the data
 	out(pin, 0);
 
 	return rc;
@@ -349,5 +352,5 @@ lcd_read(
 	uint8_t y
 )
 {
-	_lcd_select(x, y, 0, 0);
+	return _lcd_select(x, y, 0, 0);
 }
