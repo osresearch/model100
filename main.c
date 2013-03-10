@@ -234,7 +234,7 @@ main(void)
 				usb_serial_putchar(key);
 #else
 				// Normal, send it serial
-				while (bit_is_set(UCSR1A, UDRE1))
+				while (bit_is_clear(UCSR1A, UDRE1))
 					;
 				UDR1 = key;
 #endif
