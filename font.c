@@ -173,18 +173,29 @@ font_draw(
 	uint8_t y = row * 8;
 
 	const char * f = font[c];
+	uint8_t bits[6];
 
-	for (uint8_t i = 0 ; i < 6 ; i++, x++)
+	for (uint8_t i = 0 ; i < 6 ; i++)
 	{
-		// this would be faster if we used the auto-increment
-		// functions, but has lots of special cases for crossing
-		// display boundaries.
-		uint8_t bits = pgm_read_byte(&f[i]);
+		uint8_t x = pgm_read_byte(&f[i]);
 		if (mod & FONT_UNDERLINE)
-			bits |= 0x80;
+			x |= 0x80;
 		if (mod & FONT_INVERSE)
-			bits = ~bits;
-
-		lcd_display(x, y, bits);
+			x = ~x;
+		bits[i] = x;
 	}
+
+	// If x spans a 50 pixel position, then split it up
+	// across the two display controllers.
+	if (col == 8 || col == 33)
+	{
+		lcd_write(x, y, bits, 2);
+		lcd_write(x+2, y, bits+2, 4);
+	} else
+	if (col == 16)
+	{
+		lcd_write(x, y, bits, 4);
+		lcd_write(x+4, y, bits+4, 2);
+	} else 
+		lcd_write(x, y, bits, 6);
 }

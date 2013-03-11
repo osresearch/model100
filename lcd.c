@@ -106,14 +106,6 @@ lcd_command(
 }
 
 
-static inline uint8_t
-lcd_write(
-	const uint8_t byte
-)
-{
-	return lcd_command(byte, 1, 1);
-}
-
 
 static void
 lcd_vee(
@@ -261,25 +253,22 @@ lcd_init(void)
  *
  * x goes from 0 to 50, y goes from 0 to 32, rounded to 8.
  */
-static uint8_t
-lcd_doit(
+static void
+lcd_bulk_write(
 	const uint8_t pin,
 	uint8_t x,
 	uint8_t y,
-	uint8_t val,
-	uint8_t write_dir
+	const uint8_t * buf,
+	uint8_t n
 )
 {
-	uint8_t rc = 0;
-
 	out(pin, 1);
 	lcd_command((y >> 3) << 6 | x, 0, 1);
-	lcd_command(val, 1, write_dir);
-	if (!write_dir)
-		rc = lcd_command(val, 1, 0); // get the data
-	out(pin, 0);
 
-	return rc;
+	for (uint8_t i = 0 ; i < n ; i++)
+		lcd_command(buf[i], 1, 1);
+
+	out(pin, 0);
 }
 
 
@@ -288,69 +277,118 @@ lcd_doit(
  * x is ranged 0 to 240, for each pixel
  * y is ranged 0 to 64, rounded to 8
  */
-static uint8_t
-_lcd_select(
+void
+lcd_write(
 	uint8_t x,
 	uint8_t y,
-	uint8_t val,
-	uint8_t write_dir
+	const uint8_t * buf,
+	uint8_t n
 )
 {
-	uint8_t rc;
 	out(LCD_CS1, 1);
 
 	if (y < 32)
 	{
 		// Top half of the display
 		if (x < 50)
-			rc = lcd_doit(LCD_CS20, x - 0, y - 0, val, write_dir);
+			lcd_bulk_write(LCD_CS20, x - 0, y - 0, buf, n);
 		else
 		if (x < 100)
-			rc = lcd_doit(LCD_CS21, x - 50, y - 0, val, write_dir);
+			lcd_bulk_write(LCD_CS21, x - 50, y - 0, buf, n);
 		else
 		if (x < 150)
-			rc = lcd_doit(LCD_CS22, x - 100, y - 0, val, write_dir);
+			lcd_bulk_write(LCD_CS22, x - 100, y - 0, buf, n);
 		else
 		if (x < 200)
-			rc = lcd_doit(LCD_CS23, x - 150, y - 0, val, write_dir);
+			lcd_bulk_write(LCD_CS23, x - 150, y - 0, buf, n);
 		else
-			rc = lcd_doit(LCD_CS24, x - 200, y - 0, val, write_dir);
+			lcd_bulk_write(LCD_CS24, x - 200, y - 0, buf, n);
 	} else {
 		// Bottom half of the display
 		if (x < 50)
-			rc = lcd_doit(LCD_CS25, x - 0, y - 32, val, write_dir);
+			lcd_bulk_write(LCD_CS25, x - 0, y - 32, buf, n);
 		else
 		if (x < 100)
-			rc = lcd_doit(LCD_CS26, x - 50, y - 32, val, write_dir);
+			lcd_bulk_write(LCD_CS26, x - 50, y - 32, buf, n);
 		else
 		if (x < 150)
-			rc = lcd_doit(LCD_CS27, x - 100, y - 32, val, write_dir);
+			lcd_bulk_write(LCD_CS27, x - 100, y - 32, buf, n);
 		else
 		if (x < 200)
-			rc = lcd_doit(LCD_CS28, x - 150, y - 32, val, write_dir);
+			lcd_bulk_write(LCD_CS28, x - 150, y - 32, buf, n);
 		else
-			rc = lcd_doit(LCD_CS29, x - 200, y - 32, val, write_dir);
+			lcd_bulk_write(LCD_CS29, x - 200, y - 32, buf, n);
 	}
 
 	out(LCD_CS1, 0);
-	return rc;
 }
 
-void
-lcd_display(
+
+/** Enable the one chip, select the address and send/recv the byte.
+ *
+ * x goes from 0 to 50, y goes from 0 to 32, rounded to 8.
+ */
+static void
+lcd_bulk_read(
+	const uint8_t pin,
 	uint8_t x,
 	uint8_t y,
-	uint8_t val
+	uint8_t * buf,
+	uint8_t n
 )
 {
-	_lcd_select(x, y, val, 1);
+	out(pin, 1);
+	lcd_command((y >> 3) << 6 | x, 0, 1);
+	lcd_command(0, 1, 0); // dummy
+
+	for (int i = 0 ; i < n ; i++)
+		buf[i] = lcd_command(0, 1, 0);
+	out(pin, 0);
 }
 
-uint8_t
+
+void
 lcd_read(
 	uint8_t x,
-	uint8_t y
+	uint8_t y,
+	uint8_t * buf,
+	uint8_t n
 )
 {
-	return _lcd_select(x, y, 0, 0);
+	out(LCD_CS1, 1);
+
+	if (y < 32)
+	{
+		// Top half of the display
+		if (x < 50)
+			lcd_bulk_read(LCD_CS20, x - 0, y - 0, buf, n);
+		else
+		if (x < 100)
+			lcd_bulk_read(LCD_CS21, x - 50, y - 0, buf, n);
+		else
+		if (x < 150)
+			lcd_bulk_read(LCD_CS22, x - 100, y - 0, buf, n);
+		else
+		if (x < 200)
+			lcd_bulk_read(LCD_CS23, x - 150, y - 0, buf, n);
+		else
+			lcd_bulk_read(LCD_CS24, x - 200, y - 0, buf, n);
+	} else {
+		// Bottom half of the display
+		if (x < 50)
+			lcd_bulk_read(LCD_CS25, x - 0, y - 32, buf, n);
+		else
+		if (x < 100)
+			lcd_bulk_read(LCD_CS26, x - 50, y - 32, buf, n);
+		else
+		if (x < 150)
+			lcd_bulk_read(LCD_CS27, x - 100, y - 32, buf, n);
+		else
+		if (x < 200)
+			lcd_bulk_read(LCD_CS28, x - 150, y - 32, buf, n);
+		else
+			lcd_bulk_read(LCD_CS29, x - 200, y - 32, buf, n);
+	}
+
+	out(LCD_CS1, 0);
 }
