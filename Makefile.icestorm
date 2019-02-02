@@ -16,8 +16,8 @@ FOOTPRINT := $(FOOTPRINT-$(BOARD))
 PIN_SRC := $(PIN_SRC-$(BOARD))
 
 
-#PNR ?= nextpnr
-PNR ?= arachne
+PNR ?= nextpnr
+#PNR ?= arachne
 
 
 .SECONDARY:
