@@ -50,3 +50,19 @@ Pin | Function
  29 | AD7
  30 | NC
 
+
+LCD bias voltage
+===
+
+The LCD requires negative voltage, which is generated with a two diode,
+two capacitor charge pump.
+
+           +
+    PWM ---||---+--|<--+-- OUT
+                |      |
+                \/    ---
+                --    ---+
+                |      |
+    GND --------+------+
+
+
