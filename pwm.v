@@ -9,7 +9,7 @@ module pwm(
 );
 	parameter WIDTH = 8;
 	reg [WIDTH-1:0] counter;
-	assign out = duty < counter;
+	assign out = counter < duty;
 
 	always @(posedge clk)
 		counter <= counter + 1;
