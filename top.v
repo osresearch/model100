@@ -39,6 +39,7 @@ module top(
 	initial $readmemh("fb.hex", framebuffer);
 
 	wire [63:0] fb = framebuffer[lcd_x];
+/*
 	wire [7:0] pixels = {
 		fb[{lcd_y, 3'h0}],
 		fb[{lcd_y, 3'h1}],
@@ -49,16 +50,18 @@ module top(
 		fb[{lcd_y, 3'h6}],
 		fb[{lcd_y, 3'h7}]
 	};
+*/
+	wire [7:0] pixels = lcd_x;
 
 	wire [7:0] lcd_data = {
-		gpio_23,
-		gpio_25,
-		gpio_26,
-		gpio_27,
-		gpio_32,
-		gpio_35,
+		gpio_37,
 		gpio_31,
-		gpio_37
+		gpio_35,
+		gpio_32,
+		gpio_27,
+		gpio_26,
+		gpio_25,
+		gpio_23
 	};
 
 	wire [9:0] lcd_cs = {
@@ -105,9 +108,11 @@ module top(
 	);
 
 	// contrast display at 1/2 duty cycle
+	reg [28:0] dim;
+	always @(posedge clk) dim <= dim + 1;
 	pwm contrast(
 		.clk(clk),
-		.duty(2),
+		.duty(dim[21+:8]),
 		.out(gpio_38)
 	);
 endmodule
