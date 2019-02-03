@@ -64,18 +64,18 @@ module top(
 		gpio_23
 	};
 
+	// pinout on the cable is 4, 3, 9, 2, 8, 1, 7, 0, 6, 5
 	wire [9:0] lcd_cs = {
-		gpio_12,
-		gpio_21,
-		gpio_13,
-		gpio_19,
-		gpio_18,
-
-		gpio_11,
-		gpio_9,
-		gpio_6,
-		gpio_44,
-		gpio_4
+		gpio_13, // 9
+		gpio_18, // 8
+		gpio_9, // 7
+		gpio_44, // 6
+		gpio_4, // 5
+		gpio_12, // 4
+		gpio_21, // 3
+		gpio_19, // 2
+		gpio_11, // 1
+		gpio_6 // 0
 	};
 
 	wire lcd_reset = gpio_3;
