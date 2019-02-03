@@ -39,19 +39,17 @@ module top(
 	initial $readmemh("fb.hex", framebuffer);
 
 	wire [63:0] fb = framebuffer[lcd_x];
-/*
 	wire [7:0] pixels = {
-		fb[{lcd_y, 3'h0}],
-		fb[{lcd_y, 3'h1}],
-		fb[{lcd_y, 3'h2}],
-		fb[{lcd_y, 3'h3}],
-		fb[{lcd_y, 3'h4}],
-		fb[{lcd_y, 3'h5}],
+		fb[{lcd_y, 3'h7}],
 		fb[{lcd_y, 3'h6}],
-		fb[{lcd_y, 3'h7}]
+		fb[{lcd_y, 3'h5}],
+		fb[{lcd_y, 3'h4}],
+		fb[{lcd_y, 3'h3}],
+		fb[{lcd_y, 3'h2}],
+		fb[{lcd_y, 3'h1}],
+		fb[{lcd_y, 3'h0}]
 	};
-*/
-	wire [7:0] pixels = dim[28:20]; // lcd_x;
+	//wire [7:0] pixels = lcd_x;
 
 	wire [7:0] lcd_data = {
 		gpio_37,

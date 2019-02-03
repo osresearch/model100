@@ -66,3 +66,8 @@ two capacitor charge pump.
     GND --------+------+
 
 
+Image format
+===
+    convert -resize !240x64 -depth 1 -monochrome -rotate 90 \
+	logo.png logo.gray
+    xxd -g8 -c8 -p logo.gray > fb.hex
