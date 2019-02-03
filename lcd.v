@@ -52,13 +52,15 @@ module lcd(
 	localparam STATE_DATA2  = 14;
 	localparam STATE_DATA3  = 15;
 
-	localparam MAX_X	= 240;
+	localparam MAX_X	= 250;
 	localparam X_PER_MODULE	= 50;
 
 	reg [24:0] counter;
 	reg [3:0] state;
 	reg [3:0] next_state;
 	reg [6:0] disp_x;
+
+	reg [7:0] pixel_count;
 
 	always @(posedge clk)
 	begin
@@ -74,7 +76,7 @@ module lcd(
 			disp_x <= 0;
 			enable_pin <= 1;
 		end else
-		if (counter[5:0] != 0) begin
+		if (counter[18:0] != 0) begin
 			// do nothing... stretch the clocks
 		end else
 		case(state)
@@ -86,12 +88,12 @@ module lcd(
 		end
 		STATE_RESET: begin
 			// hold for a few ms
+			cs1_pin <= 1;
 			if (counter == 0)
 				state <= STATE_ON;
 			data_pin <= 0;
 		end
 		STATE_ON: begin
-			cs1_pin <= 1;
 			di_pin <= 0;
 			data_pin <= 8'b00111001; // "Turn on display"
 			next_state <= STATE_UP;
@@ -126,7 +128,7 @@ module lcd(
 		STATE_WAIT3: begin
 			enable_pin <= 1;
 
-			if (counter != 0) begin
+			if (counter[20:0] != 0) begin
 				// wait for timeout
 			end else begin
 				// select the next module
@@ -145,7 +147,6 @@ module lcd(
 		STATE_COORD: begin
 		 	// Send all the devices to the same row/column.
 			// disp_x is ignored, since we always start at first
-			cs_pin <= 1;
 			di_pin <= 0;
 			data_pin <= { y[1:0], 6'b000000 };
 			enable_pin <= 1;
@@ -161,13 +162,18 @@ module lcd(
 			// we start on the very first module after a
 			// coordinate update.
 			cs_pin <= 1;
+			// data, not instruction
+			di_pin <= 1;
+
 			enable_pin <= 1;
 			state <= STATE_DATA;
 		end
 
 		STATE_DATA: begin
-			di_pin <= 1; // data, not instruction
+			enable_pin <= 1;
 			data_pin <= pixels;
+			data_pin <= pixel_count;
+			pixel_count <= pixel_count + 1;
 			state <= STATE_DATA2;
 		end
 		STATE_DATA2: begin
@@ -178,6 +184,7 @@ module lcd(
 		STATE_DATA3: begin
 			enable_pin <= 1;
 			x <= x + 1;
+			disp_x <= disp_x + 1;
 			state <= STATE_DATA;
 
 			// at the end of the line?
@@ -191,17 +198,18 @@ module lcd(
 				end else begin
 					y <= { 1'b0, y[1:0] + 2'b01 };
 					state <= STATE_COORD;
+					// cs_pin will become 1
 				end
 
 				// swap LCD modules
-				cs_pin = { cs_pin[4:0], cs_pin[9:5] };
+				cs_pin <= { cs_pin[4:0], cs_pin[9:5] };
 				disp_x <= 0;
 				x <= 0;
 			end else
 			// at the end of this module? go to next module
 			if (disp_x == X_PER_MODULE-1) begin
 				disp_x <= 0;
-				cs_pin = { cs_pin[9-1:0], cs_pin[9] };
+				cs_pin <= { cs_pin[9-1:0], cs_pin[9] };
 			end
 		end
 		endcase

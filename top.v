@@ -51,7 +51,7 @@ module top(
 		fb[{lcd_y, 3'h7}]
 	};
 */
-	wire [7:0] pixels = lcd_x;
+	wire [7:0] pixels = dim[28:20]; // lcd_x;
 
 	wire [7:0] lcd_data = {
 		gpio_37,
@@ -99,20 +99,25 @@ module top(
 		.reset_pin(lcd_reset)
 	);
 
-	// generate a 1/4 duty cycle wave for the
-	// negative voltage charge pump circuit
-	pwm negative_charge_pump(
-		.clk(clk),
-		.duty(64),
-		.out(gpio_28)
-	);
-
-	// contrast display at 1/2 duty cycle
 	reg [28:0] dim;
 	always @(posedge clk) dim <= dim + 1;
+
+	// generate a 1/4 duty cycle wave for the
+	// negative voltage charge pump circuit
+	assign gpio_28 = dim[10];
+/*
+	pwm negative_charge_pump(
+		.clk(clk),
+		.duty(dim[28:21]),
+		.out(gpio_28)
+	);
+*/
+
+	// contrast display at 1/2 duty cycle
 	pwm contrast(
 		.clk(clk),
-		.duty(dim[21+:8]),
+		//.duty(dim[21+:8]),
+		.duty(255),
 		.out(gpio_38)
 	);
 endmodule
