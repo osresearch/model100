@@ -52,7 +52,7 @@ module lcd(
 	localparam STATE_DATA2  = 14;
 	localparam STATE_DATA3  = 15;
 
-	localparam MAX_X	= 250;
+	localparam MAX_X	= 240;
 	localparam X_PER_MODULE	= 50;
 
 	reg [24:0] counter;
@@ -195,14 +195,13 @@ module lcd(
 				// data page on the first row
 				if (!y[2]) begin
 					y <= { 1'b1, y[1:0] };
+					cs_pin <= 10'b0000100000;
 				end else begin
 					y <= { 1'b0, y[1:0] + 2'b01 };
 					state <= STATE_COORD;
 					// cs_pin will become 1
 				end
 
-				// swap LCD modules
-				cs_pin <= { cs_pin[4:0], cs_pin[9:5] };
 				disp_x <= 0;
 				x <= 0;
 			end else
