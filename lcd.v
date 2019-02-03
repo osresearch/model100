@@ -4,6 +4,8 @@
 /*
  * Draw bitmap data to the LCD display.
  *
+ * Enable pin clocks data at the falling edge.
+ *
  * This draws a row at a time in auto-advance mode.
  *
  * Each chip handles a 50x32 rectangle and is updated 8 pixel columns
@@ -53,7 +55,7 @@ module lcd(
 	localparam MAX_X	= 240;
 	localparam X_PER_MODULE	= 50;
 
-	reg [20:0] counter;
+	reg [24:0] counter;
 	reg [3:0] state;
 	reg [3:0] next_state;
 	reg [6:0] disp_x;
@@ -70,8 +72,9 @@ module lcd(
 			x <= 0;
 			y <= 0;
 			disp_x <= 0;
+			enable_pin <= 1;
 		end else
-		if (counter[2:0] != 0) begin
+		if (counter[5:0] != 0) begin
 			// do nothing... stretch the clocks
 		end else
 		case(state)
@@ -79,6 +82,7 @@ module lcd(
 			reset_pin <= 1;
 			state <= STATE_RESET;
 			counter <= 1;
+			enable_pin <= 1;
 		end
 		STATE_RESET: begin
 			// hold for a few ms
@@ -88,7 +92,6 @@ module lcd(
 		end
 		STATE_ON: begin
 			cs1_pin <= 1;
-			cs_pin <= ~0; // select all of them
 			di_pin <= 0;
 			data_pin <= 8'b00111001; // "Turn on display"
 			next_state <= STATE_UP;
@@ -108,20 +111,33 @@ module lcd(
 			state <= STATE_COORD;
 		end
 
-		/* Busy wait after a command */
+		/* Busy wait after a command and send to all modules */
 		STATE_WAIT: begin
-			// strobe the enable pin and wait a little while
 			enable_pin <= 1;
+			cs_pin <= 1;
 			state <= STATE_WAIT2;
 		end
 		STATE_WAIT2: begin
+			// strobe the enable pin and wait a little while
 			enable_pin <= 0;
 			state <= STATE_WAIT3;
 			counter <= 1;
 		end
 		STATE_WAIT3: begin
-			if (counter == 0)
-				state <= next_state;
+			enable_pin <= 1;
+
+			if (counter != 0) begin
+				// wait for timeout
+			end else begin
+				// select the next module
+				cs_pin <= { cs_pin[9-1:0], cs_pin[9] };
+
+				// have all have been selected?
+				if (cs_pin[9])
+					state <= next_state;
+				else
+					state <= STATE_WAIT2;
+			end
 		end
 
 		/* Framebuffer drawing code.
@@ -129,14 +145,15 @@ module lcd(
 		STATE_COORD: begin
 		 	// Send all the devices to the same row/column.
 			// disp_x is ignored, since we always start at first
-			cs_pin <= ~0;
+			cs_pin <= 1;
 			di_pin <= 0;
 			data_pin <= { y[1:0], 6'b000000 };
-			enable_pin <= 0;
-			state <= STATE_COORD2;
+			enable_pin <= 1;
+			next_state <= STATE_COORD3;
+			state <= STATE_WAIT;
 		end
 		STATE_COORD2: begin
-			enable_pin <= 1;
+			enable_pin <= 0;
 			state <= STATE_COORD3;
 		end
 
@@ -144,7 +161,7 @@ module lcd(
 			// we start on the very first module after a
 			// coordinate update.
 			cs_pin <= 1;
-			enable_pin <= 0;
+			enable_pin <= 1;
 			state <= STATE_DATA;
 		end
 
@@ -155,11 +172,11 @@ module lcd(
 		end
 		STATE_DATA2: begin
 			// everything is stable, clock the modules
-			enable_pin <= 1;
+			enable_pin <= 0;
 			state <= STATE_DATA3;
 		end
 		STATE_DATA3: begin
-			enable_pin <= 0;
+			enable_pin <= 1;
 			x <= x + 1;
 			state <= STATE_DATA;
 
@@ -169,9 +186,9 @@ module lcd(
 				// go to the second row.
 				// if we're on the second row, go to the next
 				// data page on the first row
-				if (!y[2])
+				if (!y[2]) begin
 					y <= { 1'b1, y[1:0] };
-				else begin
+				end else begin
 					y <= { 1'b0, y[1:0] + 2'b01 };
 					state <= STATE_COORD;
 				end
@@ -184,7 +201,7 @@ module lcd(
 			// at the end of this module? go to next module
 			if (disp_x == X_PER_MODULE-1) begin
 				disp_x <= 0;
-				cs_pin = { cs_pin[9-2:1], cs_pin[9-1] };
+				cs_pin = { cs_pin[9-1:0], cs_pin[9] };
 			end
 		end
 		endcase
