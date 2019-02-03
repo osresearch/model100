@@ -60,7 +60,7 @@ module lcd(
 	reg [3:0] next_state;
 	reg [6:0] disp_x;
 
-	reg [7:0] pixel_count;
+	reg flash;
 
 	always @(posedge clk)
 	begin
@@ -76,7 +76,7 @@ module lcd(
 			disp_x <= 0;
 			enable_pin <= 1;
 		end else
-		if (counter[18:0] != 0) begin
+		if (counter[7:0] != 0) begin
 			// do nothing... stretch the clocks
 		end else
 		case(state)
@@ -128,7 +128,7 @@ module lcd(
 		STATE_WAIT3: begin
 			enable_pin <= 1;
 
-			if (counter[20:0] != 0) begin
+			if (counter[8:0] != 0) begin
 				// wait for timeout
 			end else begin
 				// select the next module
@@ -152,6 +152,8 @@ module lcd(
 			enable_pin <= 1;
 			next_state <= STATE_COORD3;
 			state <= STATE_WAIT;
+
+			if (y == 0) flash <= !flash;
 		end
 		STATE_COORD2: begin
 			enable_pin <= 0;
@@ -171,18 +173,18 @@ module lcd(
 
 		STATE_DATA: begin
 			enable_pin <= 1;
-			data_pin <= pixels;
-			data_pin <= pixel_count;
-			pixel_count <= pixel_count + 1;
+			//data_pin <= flash ? pixels : 0;
+			data_pin <=  pixels;
 			state <= STATE_DATA2;
 		end
 		STATE_DATA2: begin
 			// everything is stable, clock the modules
-			enable_pin <= 0;
-			state <= STATE_DATA3;
+			if (counter[8:0] == 0) begin
+				enable_pin <= 0;
+				state <= STATE_DATA3;
+			end
 		end
 		STATE_DATA3: begin
-			enable_pin <= 1;
 			x <= x + 1;
 			disp_x <= disp_x + 1;
 			state <= STATE_DATA;
