@@ -33,6 +33,7 @@ module top(
 	SB_HFOSC ocs(1,1,clk_48mhz);
 	wire clk = clk_48mhz;
 
+	wire lcd_frame_strobe;
 	wire [7:0] lcd_x;
 	wire [3:0] lcd_y;
 	reg [63:0] framebuffer[239:0];
@@ -88,6 +89,7 @@ module top(
 		.pixels(pixels),
 		.x(lcd_x),
 		.y(lcd_y),
+		.frame_strobe(lcd_frame_strobe),
 		.data_pin(lcd_data),
 		.cs_pin(lcd_cs),
 		.cs1_pin(lcd_cs1),
@@ -102,20 +104,18 @@ module top(
 
 	// generate a 1/4 duty cycle wave for the
 	// negative voltage charge pump circuit
-	assign gpio_28 = dim[10];
-/*
 	pwm negative_charge_pump(
 		.clk(clk),
-		.duty(dim[28:21]),
+		//.duty(dim[28:21]),
+		.duty(128),
 		.out(gpio_28)
 	);
-*/
 
 	// contrast display at 1/2 duty cycle
 	pwm contrast(
 		.clk(clk),
-		//.duty(dim[21+:8]),
-		.duty(255),
+		.duty(dim[28:21]),
+		//.duty(255),
 		.out(gpio_38)
 	);
 endmodule

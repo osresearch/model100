@@ -21,6 +21,7 @@ module lcd(
 	input [7:0] pixels,
 	output reg [7:0] x, // 240 columns
 	output reg [3:0] y, // 8 rows of 8 pixels
+	output reg frame_strobe, // when starting a new frame
 
 	// pins
 	output reg [7:0] data_pin,
@@ -47,7 +48,7 @@ module lcd(
 	localparam STATE_DONE	= 9;
 	localparam STATE_COORD	= 10;
 	localparam STATE_COORD2 = 11;
-	localparam STATE_COORD3 = 12;
+	localparam STATE_WAIT4	= 12;
 	localparam STATE_DATA	= 13;
 	localparam STATE_DATA2  = 14;
 	localparam STATE_DATA3  = 15;
@@ -60,11 +61,10 @@ module lcd(
 	reg [3:0] next_state;
 	reg [6:0] disp_x;
 
-	reg flash;
-
 	always @(posedge clk)
 	begin
 		counter <= counter + 1;
+		frame_strobe <= 0;
 
 		if (reset) begin
 			state <= STATE_INIT;
@@ -76,14 +76,20 @@ module lcd(
 			disp_x <= 0;
 			enable_pin <= 1;
 		end else
-		if (counter[7:0] != 0) begin
+		if (counter[4:0] != 0) begin
 			// do nothing... stretch the clocks
+			// at 48 MHz this is a divide by 32, so roughly
+			// a 1.5 MHz clock.
 		end else
 		case(state)
 		STATE_INIT: begin
 			reset_pin <= 1;
 			state <= STATE_RESET;
 			counter <= 1;
+			enable_pin <= 1;
+			x <= 0;
+			y <= 0;
+			disp_x <= 0;
 			enable_pin <= 1;
 		end
 		STATE_RESET: begin
@@ -123,23 +129,21 @@ module lcd(
 			// strobe the enable pin and wait a little while
 			enable_pin <= 0;
 			state <= STATE_WAIT3;
-			counter <= 1;
+			//counter <= 1;
 		end
 		STATE_WAIT3: begin
 			enable_pin <= 1;
+			state <= STATE_WAIT4;
+		end
+		STATE_WAIT4: begin
+			// select the next module
+			cs_pin <= { cs_pin[9-1:0], cs_pin[9] };
 
-			if (counter[8:0] != 0) begin
-				// wait for timeout
-			end else begin
-				// select the next module
-				cs_pin <= { cs_pin[9-1:0], cs_pin[9] };
-
-				// have all have been selected?
-				if (cs_pin[9])
-					state <= next_state;
-				else
-					state <= STATE_WAIT2;
-			end
+			// have all have been selected?
+			if (cs_pin[9])
+				state <= next_state;
+			else
+				state <= STATE_WAIT2;
 		end
 
 		/* Framebuffer drawing code.
@@ -150,22 +154,22 @@ module lcd(
 			di_pin <= 0;
 			data_pin <= { y[1:0], 6'b000000 };
 			enable_pin <= 1;
-			next_state <= STATE_COORD3;
+			next_state <= STATE_COORD2;
 			state <= STATE_WAIT;
 
-			if (y == 0) flash <= !flash;
+			if (y == 0)
+				frame_strobe <= 1;
 		end
 		STATE_COORD2: begin
-			enable_pin <= 0;
-			state <= STATE_COORD3;
-		end
-
-		STATE_COORD3: begin
 			// we start on the very first module after a
 			// coordinate update.
 			cs_pin <= 1;
 			// data, not instruction
 			di_pin <= 1;
+
+			// return to the first column
+			x <= 0;
+			disp_x <= 0;
 
 			enable_pin <= 1;
 			state <= STATE_DATA;
@@ -173,44 +177,48 @@ module lcd(
 
 		STATE_DATA: begin
 			enable_pin <= 1;
-			//data_pin <= flash ? pixels : 0;
-			data_pin <=  pixels;
+			data_pin <= pixels;
 			state <= STATE_DATA2;
 		end
 		STATE_DATA2: begin
 			// everything is stable, clock the modules
-			if (counter[8:0] == 0) begin
-				enable_pin <= 0;
-				state <= STATE_DATA3;
-			end
+			enable_pin <= 0;
+			state <= STATE_DATA3;
 		end
 		STATE_DATA3: begin
-			x <= x + 1;
-			disp_x <= disp_x + 1;
+			enable_pin <= 1;
+
+			// default is to select the next module
+			// and continue to display the same column
 			state <= STATE_DATA;
+			cs_pin <= { cs_pin[9-1:0], cs_pin[9] };
+			x <= x + X_PER_MODULE;
 
-			// at the end of the line?
-			if (x == MAX_X-1) begin
-				// if we're on the first row of modules,
-				// go to the second row.
-				// if we're on the second row, go to the next
-				// data page on the first row
-				if (!y[2]) begin
-					y <= { 1'b1, y[1:0] };
-					cs_pin <= 10'b0000100000;
-				end else begin
-					y <= { 1'b0, y[1:0] + 2'b01 };
-					state <= STATE_COORD;
-					// cs_pin will become 1
-				end
-
-				disp_x <= 0;
-				x <= 0;
+			if (cs_pin[4]) begin
+				// end of first row of modules
+				// move to the second row
+				// rewind x to be back at the current
+				// display column
+				y[2] <= 1;
+				x <= disp_x;
 			end else
-			// at the end of this module? go to next module
-			if (disp_x == X_PER_MODULE-1) begin
-				disp_x <= 0;
-				cs_pin <= { cs_pin[9-1:0], cs_pin[9] };
+			if (cs_pin[9]) begin
+				// end of the second row of modules
+				// go back to the first row
+				y[2] <= 0;
+
+				if (disp_x == X_PER_MODULE-1) begin
+					// move back to the first module,
+					// on the next Y data page
+					state <= STATE_COORD;
+					y[1:0] <= y[1:0] + 1;
+					x <= 0;
+					disp_x <= 0;
+				end else begin
+					// advance the display X coordinate
+					disp_x <= disp_x + 1;
+					x <= disp_x + 1;
+				end
 			end
 		end
 		endcase
