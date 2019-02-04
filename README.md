@@ -66,6 +66,22 @@ two capacitor charge pump.
     GND --------+------+
 
 
+If it is driven with a 3V signal, the minimum output is around -2 V.
+Driving with a 5V PWM produces  -3 V, which gives better contrast.
+
+            5V
+             |
+             # 100 Ohm
+             |
+             +-------------- 5V PWM out
+             |
+             /
+    PWM ----|
+             \
+             v
+             |
+            GND        
+
 Image format
 ===
     convert -resize !240x64 -depth 1 -monochrome -rotate 90 \
