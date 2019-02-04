@@ -1,7 +1,13 @@
 `include "pwm.v"
 `include "lcd.v"
+`include "uart.v"
 
 module top(
+	output serial_txd,
+	input serial_rxd,
+	output spi_cs,
+	output led_r,
+
 	output gpio_23,
 	output gpio_25,
 	output gpio_26,
@@ -30,6 +36,7 @@ module top(
 );
 
 	wire clk_48mhz;
+	wire reset = 0;
 	SB_HFOSC ocs(1,1,clk_48mhz);
 	wire clk = clk_48mhz;
 
@@ -85,7 +92,7 @@ module top(
 
 	lcd modell100_lcd(
 		.clk(clk),
-		.reset(0),
+		.reset(reset),
 		.pixels(pixels),
 		.x(lcd_x),
 		.y(lcd_y),
@@ -118,4 +125,67 @@ module top(
 		//.duty(255),
 		.out(gpio_38)
 	);
+
+
+	// read bytes from the serial port for the framebuffer
+	assign spi_cs = 1; // it is necessary to turn off the SPI flash chip
+	assign serial_txd = 1;
+
+	// generate a 3 MHz/12 MHz serial clock from the 48 MHz clock
+	// this is the 3 Mb/s maximum supported by the FTDI chip
+	wire clk_1, clk_4;
+	divide_by_n #(.N(16)) div1(clk, reset, clk_1);
+	divide_by_n #(.N( 4)) div4(clk, reset, clk_4);
+
+	wire [7:0] uart_rxd;
+	wire uart_rxd_strobe;
+	reg [7:0] x;
+	reg [2:0] y;
+	wire [63:0] wr_fb = framebuffer[x];
+	wire [7:0] wr_pixels = {
+		wr_fb[{y, 3'h7}],
+		wr_fb[{y, 3'h6}],
+		wr_fb[{y, 3'h5}],
+		wr_fb[{y, 3'h4}],
+		wr_fb[{y, 3'h3}],
+		wr_fb[{y, 3'h2}],
+		wr_fb[{y, 3'h1}],
+		wr_fb[{y, 3'h0}]
+	};
+
+	uart_rx rxd(
+		.mclk(clk),
+		.reset(reset),
+		.baud_x4(clk_4),
+		.serial(serial_rxd),
+		.data(uart_rxd),
+		.data_strobe(uart_rxd_strobe)
+	);
+
+	always @(posedge clk)
+	begin
+		led_r <= 1;
+		if (uart_rxd_strobe) begin
+			led_r <= 0;
+			framebuffer[x][8*y +: 8] <= {
+				uart_rxd[0],
+				uart_rxd[1],
+				uart_rxd[2],
+				uart_rxd[3],
+				uart_rxd[4],
+				uart_rxd[5],
+				uart_rxd[6],
+				uart_rxd[7]
+			};
+
+			y <= y + 1;
+			if (y == 7) begin
+				if (x == 239)
+					x <= 0;
+				else
+					x <= x + 1;
+			end
+		end
+	end
+
 endmodule
