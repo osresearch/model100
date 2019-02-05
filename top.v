@@ -1,6 +1,7 @@
 `include "pwm.v"
 `include "lcd.v"
 `include "uart.v"
+`include "font.v"
 
 module top(
 	output serial_txd,
@@ -47,11 +48,6 @@ module top(
 	reg [63:0] framebuffer[239:0];
 	initial $readmemh("fb.hex", framebuffer);
 
-	// the font is stored as five bytes each and only stores
-	// the characters from space (0x20) to ~ (0x7E)
-	reg [7:0] font[8'h60 * 5:0];
-	initial $readmemh("font.hex", font);
-
 	// the text buffer is 40x8
 	// bit 8 is unused, could do inverse video?
 	reg [7:0] text[64*8-1:0];
@@ -65,14 +61,25 @@ module top(
 		for(col = 0 ; col < 256 ; col++)
 			div6[col] <= col / 6;
 	end
-	wire [5:0] lcd_column = div6[lcd_x];
-	wire [2:0] lcd_subcol = lcd_x - (lcd_column * 6);
+	reg [5:0] lcd_column; // = div6[lcd_x];
+	reg [2:0] lcd_subcol; // = lcd_x - (lcd_column * 6);
 	wire [8:0] lcd_pos = { lcd_y, lcd_column };
-	wire [7:0] byte = text[lcd_pos];
-	wire inverted_video = byte[7];
-	wire [6:0] char = byte[6:0] - 7'h20;
-	wire [8:0] font_col = char * 5 + lcd_subcol; // 875 LC
-	wire [7:0] pixels = lcd_subcol == 5 ? 8'h0 : font[font_col];
+	wire [7:0] lcd_char = text[lcd_pos];
+	wire inverted_video = lcd_char[7];
+	wire [7:0] pixels;
+
+	always @(posedge clk)
+	begin
+		lcd_column <= div6[lcd_x];
+		lcd_subcol <= lcd_x - (div6[lcd_x] * 6);
+	end
+
+	font_5x7 font(
+		.clk(clk),
+		.pixels(pixels),
+		.character(lcd_char[6:0]),
+		.col(lcd_subcol)
+	);
 
 /*
 	wire [63:0] fb = framebuffer[lcd_x];
