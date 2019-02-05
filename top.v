@@ -111,10 +111,10 @@ module top(
 		gpio_6 // 0
 	};
 
-	wire lcd_reset = gpio_3;
+	wire lcd_reset = gpio_3; // can be ignored, pull high
 	wire lcd_cs1 = gpio_48;
 	wire lcd_enable = gpio_45;
-	wire lcd_rw = gpio_47;
+	wire lcd_rw = gpio_47; // can be ignored, pull low
 	wire lcd_di = gpio_46;
 
 	lcd modell100_lcd(
@@ -153,8 +153,38 @@ module top(
 		.out(gpio_38)
 	);
 
-	// clk == 48 MHz, gpio_2 == 732 Hz
-	assign gpio_2 = dim[16];
+/*
+	// clk == 48 MHz
+	// buzz the gpio_2
+	reg [15:0] music[7:0];
+	initial begin
+		music[0] <= { 7'h7F, 9'd500 };
+		music[1] <= { 7'h40, 9'd00 };
+		music[2] <= { 7'h7F, 9'd250 };
+		music[3] <= { 7'h7F, 9'd00 };
+		music[4] <= { 7'h7F, 9'd400 };
+		music[5] <= { 7'h40, 9'd00 };
+		music[6] <= { 7'h7F, 9'd200 };
+		music[7] <= { 7'h7F, 9'd00 };
+	end
+	reg [2:0] pos;
+	reg [25:0] delay;
+	reg [31:0] div;
+
+	assign gpio_2 = div[27];
+
+	always @(posedge clk)
+	begin
+		div <= div + music[pos][8:0];
+		delay <= delay + 1;
+
+		if (delay[25-:7] == music[pos][15:9])
+		begin
+			pos <= pos + 1;
+			delay <= 0;
+		end
+	end
+*/
 
 	// read bytes from the serial port for the framebuffer
 	assign spi_cs = 1; // it is necessary to turn off the SPI flash chip

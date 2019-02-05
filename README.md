@@ -22,7 +22,7 @@ Pin | Function
   1 | VDD
   2 | BZ - buzzer on the front panel (optional)
   3 | VEE -- negative voltage (-5V)
-  4 | V2 - contrast voltage
+  4 | V2 - contrast voltage (0 - 5V)
   5 | GND
   6 | GND
   7 | CS24
@@ -35,10 +35,10 @@ Pin | Function
  14 | CS20
  15 | CS26
  16 | CS25
- 17 | RESET (can be pulled high?)
+ 17 | RESET (can be pulled high for always reset)
  18 | CS1
  19 | E
- 20 | R/!W (can be pulled low)
+ 20 | R/!W (can be pulled low for always write)
  21 | D/!I
  22 | AD0
  23 | AD1
