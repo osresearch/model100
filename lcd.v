@@ -20,7 +20,7 @@ module lcd(
 	// bitmap data to be displayed
 	input [7:0] pixels,
 	output reg [7:0] x, // 240 columns
-	output reg [3:0] y, // 8 rows of 8 pixels
+	output reg [2:0] y, // 8 rows of 8 pixels
 	output reg frame_strobe, // when starting a new frame
 
 	// pins
