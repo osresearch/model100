@@ -8,6 +8,7 @@ module top(
 	output spi_cs,
 	output led_r,
 
+	output gpio_2,
 	output gpio_23,
 	output gpio_25,
 	output gpio_26,
@@ -46,6 +47,34 @@ module top(
 	reg [63:0] framebuffer[239:0];
 	initial $readmemh("fb.hex", framebuffer);
 
+	// the font is stored as five bytes each and only stores
+	// the characters from space (0x20) to ~ (0x7E)
+	reg [7:0] font[8'h60 * 5:0];
+	initial $readmemh("font.hex", font);
+
+	// the text buffer is 40x8
+	// bit 8 is unused, could do inverse video?
+	reg [7:0] text[64*8-1:0];
+	initial $readmemh("text.hex", text);
+
+	// select the character that should be drawn at the x/y coord
+	// perl -e 'printf "%02x\n", (int($_ / 5) << 4) | ($_ % 5) for 0..239' > base-5.hex
+	reg [7:0] div6[255:0];
+	integer col;
+	initial begin
+		for(col = 0 ; col < 256 ; col++)
+			div6[col] <= col / 6;
+	end
+	wire [5:0] lcd_column = div6[lcd_x];
+	wire [2:0] lcd_subcol = lcd_x - (lcd_column * 6);
+	wire [8:0] lcd_pos = { lcd_y, lcd_column };
+	wire [7:0] byte = text[lcd_pos];
+	wire inverted_video = byte[7];
+	wire [6:0] char = byte[6:0] - 7'h20;
+	wire [8:0] font_col = char * 5 + lcd_subcol; // 875 LC
+	wire [7:0] pixels = lcd_subcol == 5 ? 8'h0 : font[font_col];
+
+/*
 	wire [63:0] fb = framebuffer[lcd_x];
 	wire [7:0] pixels = {
 		fb[{lcd_y, 3'h7}],
@@ -58,6 +87,7 @@ module top(
 		fb[{lcd_y, 3'h0}]
 	};
 	//wire [7:0] pixels = lcd_x;
+*/
 
 	wire [7:0] lcd_data = {
 		gpio_37,
@@ -93,7 +123,7 @@ module top(
 	lcd modell100_lcd(
 		.clk(clk),
 		.reset(reset),
-		.pixels(pixels),
+		.pixels(inverted_video ? ~pixels : pixels),
 		.x(lcd_x),
 		.y(lcd_y),
 		.frame_strobe(lcd_frame_strobe),
@@ -126,6 +156,8 @@ module top(
 		.out(gpio_38)
 	);
 
+	// clk == 48 MHz, gpio_2 == 732 Hz
+	assign gpio_2 = dim[16];
 
 	// read bytes from the serial port for the framebuffer
 	assign spi_cs = 1; // it is necessary to turn off the SPI flash chip
