@@ -2,6 +2,7 @@
 `include "lcd.v"
 `include "uart.v"
 `include "font.v"
+`include "textbuffer.v"
 
 module top(
 	output serial_txd,
@@ -44,35 +45,24 @@ module top(
 
 	wire lcd_frame_strobe;
 	wire [7:0] lcd_x;
-	wire [3:0] lcd_y;
+	wire [2:0] lcd_y;
+	wire [2:0] lcd_subcol;
+	wire [7:0] lcd_char;
+
 	reg [63:0] framebuffer[239:0];
 	initial $readmemh("fb.hex", framebuffer);
 
-	// the text buffer is 40x8
-	// bit 8 is unused, could do inverse video?
-	reg [7:0] text[64*8-1:0];
-	initial $readmemh("text.hex", text);
+	textbuffer tb(
+		.clk(clk),
+		.char(lcd_char),
+		.subcol(lcd_subcol),
+		.lcd_x(lcd_x),
+		.lcd_y(lcd_y),
+		.write_strobe(0)
+	);
 
-	// select the character that should be drawn at the x/y coord
-	// perl -e 'printf "%02x\n", (int($_ / 5) << 4) | ($_ % 5) for 0..239' > base-5.hex
-	reg [7:0] div6[255:0];
-	integer col;
-	initial begin
-		for(col = 0 ; col < 256 ; col++)
-			div6[col] <= col / 6;
-	end
-	reg [5:0] lcd_column; // = div6[lcd_x];
-	reg [2:0] lcd_subcol; // = lcd_x - (lcd_column * 6);
-	wire [8:0] lcd_pos = { lcd_y, lcd_column };
-	wire [7:0] lcd_char = text[lcd_pos];
 	wire inverted_video = lcd_char[7];
 	wire [7:0] pixels;
-
-	always @(posedge clk)
-	begin
-		lcd_column <= div6[lcd_x];
-		lcd_subcol <= lcd_x - (div6[lcd_x] * 6);
-	end
 
 	font_5x7 font(
 		.clk(clk),
