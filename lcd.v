@@ -21,7 +21,7 @@ module lcd(
 	input [7:0] pixels,
 	output reg [7:0] x, // 240 columns
 	output reg [2:0] y, // 8 rows of 8 pixels
-	output reg frame_strobe, // when starting a new frame
+	input frame_strobe, // start a new frame
 
 	// pins
 	output reg [7:0] data_pin,
@@ -64,7 +64,6 @@ module lcd(
 	always @(posedge clk)
 	begin
 		counter <= counter + 1;
-		frame_strobe <= 0;
 
 		if (reset) begin
 			state <= STATE_INIT;
@@ -155,10 +154,7 @@ module lcd(
 			data_pin <= { y[1:0], 6'b000000 };
 			enable_pin <= 1;
 			next_state <= STATE_COORD2;
-			state <= STATE_WAIT;
 
-			if (y == 0)
-				frame_strobe <= 1;
 		end
 		STATE_COORD2: begin
 			// we start on the very first module after a
@@ -172,7 +168,21 @@ module lcd(
 			disp_x <= 0;
 
 			enable_pin <= 1;
-			state <= STATE_DATA;
+
+			if (y == 0) begin
+				if (!frame_strobe)
+					// deselect the LCD
+					// wait for the strobe
+					cs1_pin <= 0;
+				else begin
+					// start drawing
+					cs1_pin <= 1;
+					state <= STATE_DATA;
+				end
+			end else begin
+				// resume drawing at the start of this row
+				state <= STATE_DATA;
+			end
 		end
 
 		STATE_DATA: begin

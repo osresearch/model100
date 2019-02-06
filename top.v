@@ -54,7 +54,7 @@ module top(
 	SB_HFOSC ocs(1,1,clk_48mhz);
 	wire clk = clk_48mhz;
 
-	wire lcd_frame_strobe;
+	reg lcd_frame_strobe;
 	wire [7:0] lcd_x;
 	wire [2:0] lcd_y;
 	wire [2:0] lcd_subcol;
@@ -131,7 +131,6 @@ module top(
 	wire lcd_rw; // = gpio_47; // can be ignored, pull low
 	wire lcd_di = gpio_46;
 
-/*
 	lcd modell100_lcd(
 		.clk(clk),
 		.reset(reset),
@@ -147,10 +146,6 @@ module top(
 		.enable_pin(lcd_enable),
 		.reset_pin(lcd_reset)
 	);
-*/
-	// force the LCD off
-	assign lcd_cs1 = 0;
-	assign lcd_enable = 1;
 
 	reg [28:0] dim;
 	always @(posedge clk) dim <= dim + 1;
@@ -251,7 +246,7 @@ module top(
 		.data_strobe(uart_rxd_strobe)
 	);
 
-	wire lcd_output = 0;
+	reg lcd_output = 1;
 	wire [7:0] key_row;
 	wire [7:0] key_col_pin = {
 		gpio_34,
@@ -285,12 +280,17 @@ module top(
 		counter <= counter + 1;
 
 		if (counter == 0) begin
+			// stop the LCD task, wait for it to end
+			lcd_frame_strobe <= 0;
+		end else
+		if (counter == 1000) begin
+			lcd_output <= 0;
 			uart_txd_strobe <= 1;
 			uart_txd <= col;
 			col_driver <= ~(1 << col);
 			//key_col_pin <= ~(1 << col);
 		end else
-		if (counter == 1000) begin
+		if (counter == 1500) begin
 			uart_txd <= ~key_row;
 			uart_txd_strobe <= 1;
 			//col_driver <= { col_driver[7:0], col_driver[8] };
@@ -300,6 +300,10 @@ module top(
 			end else begin
 				col <= col + 1;
 			end
+
+			// re-enable the LCD output
+			lcd_frame_strobe <= 1;
+			lcd_output <= 1;
 		end
 		
 	end
