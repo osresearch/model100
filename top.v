@@ -10,16 +10,17 @@ module top(
 	output spi_cs,
 	output led_r,
 
-	output gpio_2,
-	output gpio_23,
-	output gpio_25,
-	output gpio_26,
-	output gpio_27,
-	output gpio_32,
-	output gpio_35,
-	output gpio_31,
-	output gpio_37,
-	output gpio_38,
+	// LCD data and keyboard rows are shared
+	inout gpio_37,
+	inout gpio_31,
+	inout gpio_35,
+	inout gpio_32,
+	inout gpio_27,
+	inout gpio_26,
+	inout gpio_25,
+	inout gpio_23,
+
+	// LCD control signals
 	output gpio_28,
 	output gpio_4,
 	output gpio_44,
@@ -31,11 +32,21 @@ module top(
 	output gpio_13,
 	output gpio_21,
 	output gpio_12,
-	output gpio_3,
+	//output gpio_3, // LCD
 	output gpio_48,
 	output gpio_45,
+	//output gpio_47, // LCD
+	output gpio_46,
+
+	// keyboard columns
+	output gpio_34,
+	output gpio_43,
+	output gpio_36,
+	output gpio_42,
+	output gpio_38,
+	output gpio_2,
 	output gpio_47,
-	output gpio_46
+	output gpio_3
 );
 
 	wire clk_48mhz;
@@ -86,7 +97,10 @@ module top(
 	//wire [7:0] pixels = lcd_x;
 */
 
-	wire [7:0] lcd_data = {
+	wire [7:0] lcd_data;
+
+	// shared by LCD and keyboard
+	wire [7:0] data_pins = {
 		gpio_37,
 		gpio_31,
 		gpio_35,
@@ -111,12 +125,13 @@ module top(
 		gpio_6 // 0
 	};
 
-	wire lcd_reset = gpio_3; // can be ignored, pull high
+	wire lcd_reset; // = gpio_3; // can be ignored, pull high
 	wire lcd_cs1 = gpio_48;
 	wire lcd_enable = gpio_45;
-	wire lcd_rw = gpio_47; // can be ignored, pull low
+	wire lcd_rw; // = gpio_47; // can be ignored, pull low
 	wire lcd_di = gpio_46;
 
+/*
 	lcd modell100_lcd(
 		.clk(clk),
 		.reset(reset),
@@ -132,6 +147,10 @@ module top(
 		.enable_pin(lcd_enable),
 		.reset_pin(lcd_reset)
 	);
+*/
+	// force the LCD off
+	assign lcd_cs1 = 0;
+	assign lcd_enable = 1;
 
 	reg [28:0] dim;
 	always @(posedge clk) dim <= dim + 1;
@@ -145,6 +164,7 @@ module top(
 		.out(gpio_28)
 	);
 
+/*
 	// contrast display at 1/2 duty cycle
 	pwm contrast(
 		.clk(clk),
@@ -153,7 +173,6 @@ module top(
 		.out(gpio_38)
 	);
 
-/*
 	// clk == 48 MHz
 	// buzz the gpio_2
 	reg [15:0] music[7:0];
@@ -188,7 +207,6 @@ module top(
 
 	// read bytes from the serial port for the framebuffer
 	assign spi_cs = 1; // it is necessary to turn off the SPI flash chip
-	assign serial_txd = 1;
 
 	// generate a 3 MHz/12 MHz serial clock from the 48 MHz clock
 	// this is the 3 Mb/s maximum supported by the FTDI chip
@@ -212,6 +230,18 @@ module top(
 		wr_fb[{y, 3'h0}]
 	};
 
+	reg uart_txd_strobe;
+	reg [7:0] uart_txd;
+
+	uart_tx txd(
+		.mclk(clk),
+		.reset(reset),
+		.baud_x1(clk_1),
+		.serial(serial_txd),
+		.data(uart_txd),
+		.data_strobe(uart_txd_strobe)
+	);
+
 	uart_rx rxd(
 		.mclk(clk),
 		.reset(reset),
@@ -220,6 +250,59 @@ module top(
 		.data(uart_rxd),
 		.data_strobe(uart_rxd_strobe)
 	);
+
+	wire lcd_output = 0;
+	wire [7:0] key_row;
+	wire [7:0] key_col_pin = {
+		gpio_34,
+		gpio_43,
+		gpio_36,
+		gpio_42,
+		gpio_38,
+		gpio_2,
+		gpio_47,
+		gpio_3
+	};
+	SB_IO #(
+		.PIN_TYPE(6'b1010_01), // tristable
+		.PULLUP(1'b 1)
+	) key_row_buffer[7:0](
+		.OUTPUT_ENABLE(lcd_output),
+ 		.PACKAGE_PIN(data_pins),
+		.D_IN_0(key_row),
+		.D_OUT_0(lcd_data)
+	);
+		
+
+	reg [18:0] counter;
+	reg [3:0] col;
+	reg [7:0] col_driver = 8'b 1111_1110;
+	assign key_col_pin = col_driver;
+
+	always @(posedge clk)
+	begin
+		uart_txd_strobe <= 0;
+		counter <= counter + 1;
+
+		if (counter == 0) begin
+			uart_txd_strobe <= 1;
+			uart_txd <= col;
+			col_driver <= ~(1 << col);
+			//key_col_pin <= ~(1 << col);
+		end else
+		if (counter == 1000) begin
+			uart_txd <= ~key_row;
+			uart_txd_strobe <= 1;
+			//col_driver <= { col_driver[7:0], col_driver[8] };
+
+			if (col == 8) begin
+				col <= 0;
+			end else begin
+				col <= col + 1;
+			end
+		end
+		
+	end
 
 	always @(posedge clk)
 	begin

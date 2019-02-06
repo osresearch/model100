@@ -87,3 +87,21 @@ Image format
     convert -resize !240x64 -depth 1 -monochrome -rotate 90 \
 	logo.png logo.gray
     xxd -g8 -c8 -p logo.gray > fb.hex
+
+
+Keyboard
+====
+
+The 8x9 keyboard matrix has diodes on every key so it is possible to
+identify any number of pressed keys.  However, due to the direction of
+the diodes this requires that a slightly odd mechanism be used.
+
+The 8 rows are all configured as input pullups and the 8 of the 9 columns
+are driven high.  All the rows are read and any that have been pulled low
+due to the diode sinking current to ground are pressed.
+
+          3V
+           |
+           # internal pullup
+           |
+    Row ---+---->|--/ --- Col
