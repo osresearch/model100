@@ -16,6 +16,7 @@ FOOTPRINT := $(FOOTPRINT-$(BOARD))
 PIN_SRC := $(PIN_SRC-$(BOARD))
 
 
+USB_DEV ?= 1-1:1.0
 PNR ?= nextpnr
 #PNR ?= arachne
 
@@ -25,7 +26,7 @@ PNR ?= nextpnr
 %.flash: %.bin
 	$(ICEPATH)iceprog -e 128 # Force a reset
 	$(ICEPATH)iceprog $<
-	echo 1-1:1.0 | tee /sys/bus/usb/drivers/ftdi_sio/bind
+	echo $(USB_DEV) | tee /sys/bus/usb/drivers/ftdi_sio/bind
 
 %.bin: %.asc
 	$(ICEPATH)icepack $< $@
