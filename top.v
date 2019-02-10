@@ -10,6 +10,8 @@ module top(
 	input serial_rxd,
 	output spi_flash_cs,
 	output led_r,
+	output led_g,
+	output led_b,
 
 	// LCD data and keyboard rows are shared
 	inout gpio_37,
@@ -39,12 +41,14 @@ module top(
 	//output gpio_47, // LCD
 	output gpio_46,
 
-	// keyboard columns
-	output gpio_34,
-	output gpio_43,
-	output gpio_36,
-	output gpio_42,
-	output gpio_38,
+	// spi display from the pi (should be the keyboard)
+	input gpio_34,
+	input gpio_43,
+	input gpio_36,
+	input gpio_42,
+	input gpio_38,
+
+	// for the keyboard colums, eventually
 	output gpio_2,
 	output gpio_47,
 	output gpio_3
@@ -312,6 +316,7 @@ module top(
 	end
 */
 
+`ifdef UART_FB
 	always @(posedge clk)
 	begin
 		led_r <= 1;
@@ -337,6 +342,7 @@ module top(
 			end
 		end
 	end
+`endif
 
 	// interface with the Raspiberry Pi SPI TFT library
 	wire spi_tft_strobe;
@@ -348,13 +354,17 @@ module top(
 	wire [4:0] spi_tft_b = spi_tft_pixels[4:0];
 
 	// 240 x 64
+/*
 	wire [63:0] spi_framebuffer_col = framebuffer[spi_tft_x[7:0]];
 	wire spi_frame_buffer_pixel = spi_framebuffer_col[spi_tft_y[5:0]];
+*/
+	wire [63:0] spi_framebuffer_col = framebuffer[128];
+	wire spi_frame_buffer_pixel = spi_framebuffer_col[spi_tft_y[5:0]];
 
-	wire spi_cs = key_row[0];
-	wire spi_clk = key_row[1];
-	wire spi_dc = key_row[2];
-	wire spi_di = key_row[3];
+	wire spi_dc = gpio_43;
+	wire spi_di = gpio_36;
+	wire spi_clk = gpio_42;
+	wire spi_cs = gpio_38;
 
 	spi_display spi_display_inst(
 		// physical interface
@@ -372,11 +382,18 @@ module top(
 
 	always @(posedge spi_clk)
 	begin
+		led_r <= 1;
+		led_g <= 1;
+		led_b <= 1;
+
 		if (spi_tft_strobe)
 		begin
+			led_r <= 0;
+
 			// convert to monochrome if any of the top bits
 			// of the RGB pixel are set
-			spi_frame_buffer_pixel <=
+			if (spi_tft_x < 240 && spi_tft_y < 64)
+			framebuffer[spi_tft_x[7:0]][spi_tft_y[5:0]] <=
 				spi_tft_r[4] | spi_tft_g[5] | spi_tft_b[4];
 		end
 	end
