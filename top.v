@@ -3,11 +3,12 @@
 `include "uart.v"
 `include "font.v"
 `include "textbuffer.v"
+`include "spi_display.v"
 
 module top(
 	output serial_txd,
 	input serial_rxd,
-	output spi_cs,
+	output spi_flash_cs,
 	output led_r,
 
 	// LCD data and keyboard rows are shared
@@ -54,7 +55,7 @@ module top(
 	SB_HFOSC ocs(1,1,clk_48mhz);
 	wire clk = clk_48mhz;
 
-	reg lcd_frame_strobe;
+	reg lcd_frame_strobe = 1;
 	wire [7:0] lcd_x;
 	wire [2:0] lcd_y;
 	wire [2:0] lcd_subcol;
@@ -63,6 +64,7 @@ module top(
 	reg [63:0] framebuffer[239:0];
 	initial $readmemh("fb.hex", framebuffer);
 
+`ifdef TEXT_MODE
 	textbuffer tb(
 		.clk(clk),
 		.char(lcd_char),
@@ -81,8 +83,8 @@ module top(
 		.character(lcd_char[6:0]),
 		.col(lcd_subcol)
 	);
+`else
 
-/*
 	wire [63:0] fb = framebuffer[lcd_x];
 	wire [7:0] pixels = {
 		fb[{lcd_y, 3'h7}],
@@ -95,7 +97,7 @@ module top(
 		fb[{lcd_y, 3'h0}]
 	};
 	//wire [7:0] pixels = lcd_x;
-*/
+`endif
 
 	wire [7:0] lcd_data;
 
@@ -134,7 +136,8 @@ module top(
 	lcd modell100_lcd(
 		.clk(clk),
 		.reset(reset),
-		.pixels(inverted_video ? ~pixels : pixels),
+		//.pixels(inverted_video ? ~pixels : pixels),
+		.pixels(pixels),
 		.x(lcd_x),
 		.y(lcd_y),
 		.frame_strobe(lcd_frame_strobe),
@@ -201,7 +204,7 @@ module top(
 */
 
 	// read bytes from the serial port for the framebuffer
-	assign spi_cs = 1; // it is necessary to turn off the SPI flash chip
+	assign spi_flash_cs = 1; // it is necessary to turn off the SPI flash chip
 
 	// generate a 3 MHz/12 MHz serial clock from the 48 MHz clock
 	// this is the 3 Mb/s maximum supported by the FTDI chip
@@ -267,8 +270,8 @@ module top(
 		.D_IN_0(key_row),
 		.D_OUT_0(lcd_data)
 	);
-		
 
+/*
 	reg [18:0] counter;
 	reg [3:0] col;
 	reg [7:0] col_driver = 8'b 1111_1110;
@@ -307,6 +310,7 @@ module top(
 		end
 		
 	end
+*/
 
 	always @(posedge clk)
 	begin
@@ -331,6 +335,49 @@ module top(
 				else
 					x <= x + 1;
 			end
+		end
+	end
+
+	// interface with the Raspiberry Pi SPI TFT library
+	wire spi_tft_strobe;
+	wire [15:0] spi_tft_pixels;
+	wire [15:0] spi_tft_x;
+	wire [15:0] spi_tft_y;
+	wire [4:0] spi_tft_r = spi_tft_pixels[15:11];
+	wire [5:0] spi_tft_g = spi_tft_pixels[10:5];
+	wire [4:0] spi_tft_b = spi_tft_pixels[4:0];
+
+	// 240 x 64
+	wire [63:0] spi_framebuffer_col = framebuffer[spi_tft_x[7:0]];
+	wire spi_frame_buffer_pixel = spi_framebuffer_col[spi_tft_y[5:0]];
+
+	wire spi_cs = key_row[0];
+	wire spi_clk = key_row[1];
+	wire spi_dc = key_row[2];
+	wire spi_di = key_row[3];
+
+	spi_display spi_display_inst(
+		// physical interface
+		.spi_clk(spi_clk),
+		.spi_dc(spi_dc),
+		.spi_di(spi_di),
+		.spi_cs(spi_cs),
+
+		// output
+		.pixels(spi_tft_pixels),
+		.strobe(spi_tft_strobe),
+		.x(spi_tft_x),
+		.y(spi_tft_y)
+	);
+
+	always @(posedge spi_clk)
+	begin
+		if (spi_tft_strobe)
+		begin
+			// convert to monochrome if any of the top bits
+			// of the RGB pixel are set
+			spi_frame_buffer_pixel <=
+				spi_tft_r[4] | spi_tft_g[5] | spi_tft_b[4];
 		end
 	end
 

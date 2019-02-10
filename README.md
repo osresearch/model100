@@ -105,3 +105,12 @@ due to the diode sinking current to ground are pressed.
            # internal pullup
            |
     Row ---+---->|--/ --- Col
+
+
+Upduino v2
+===
+
+J6 1.7 5 90
+JP6 39.5 1.8 180
+JP5 39.5 19.58 180
+

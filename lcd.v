@@ -154,6 +154,7 @@ module lcd(
 			data_pin <= { y[1:0], 6'b000000 };
 			enable_pin <= 1;
 			next_state <= STATE_COORD2;
+			state <= STATE_WAIT;
 
 		end
 		STATE_COORD2: begin
