@@ -233,14 +233,16 @@ module top(
 	};
 
 	reg uart_txd_strobe;
-	reg [7:0] uart_txd;
+	reg uart_txd_ready;
+	reg [7:0] uart_txd_data;
 
 	uart_tx txd(
 		.mclk(clk),
 		.reset(reset),
 		.baud_x1(clk_1),
 		.serial(serial_txd),
-		.data(uart_txd),
+		.ready(uart_txd_ready),
+		.data(uart_txd_data),
 		.data_strobe(uart_txd_strobe)
 	);
 
@@ -366,7 +368,54 @@ module top(
 	wire spi_clk = gpio_42;
 	wire spi_cs = gpio_38;
 
+	wire [16-1:0] x_end;
+	wire [16-1:0] y_end;
+	wire [16-1:0] x_start;
+	wire [16-1:0] y_start;
+
+	reg [18:0] out_count;
+	always @(posedge clk) begin
+		uart_txd_strobe <= 0;
+
+		if (uart_txd_ready
+		&& !uart_txd_strobe) begin
+			out_count <= out_count + 1;
+
+			if (out_count[14:0] == 0) begin
+			uart_txd_strobe <= 1;
+
+			case (out_count[18:15])
+			0: uart_txd_data <= x_start[15:8];
+			1: uart_txd_data <= x_start[7:0];
+			2: uart_txd_data <= x_end[15:8];
+			3: uart_txd_data <= x_end[7:0];
+			4: uart_txd_data <= y_start[15:8];
+			5: uart_txd_data <= y_start[7:0];
+			6: uart_txd_data <= y_end[15:8];
+			7: uart_txd_data <= y_end[7:0];
+			8: uart_txd_data <= 8'hFF;
+			9: uart_txd_data <= 8'hFF;
+			10: uart_txd_data <= 8'hFF;
+			11: uart_txd_data <= 8'hff;
+			12: uart_txd_data <= 8'h01;
+			13: uart_txd_data <= 8'h02;
+			14: uart_txd_data <= 8'h03;
+			15: uart_txd_data <= 8'h04;
+			endcase
+			end
+		end
+	end
+
 	spi_display spi_display_inst(
+		.debug(led_g),
+		.x_start(x_start),
+		.y_start(y_start),
+		.x_end(x_end),
+		.y_end(y_end),
+
+		//.uart_strobe(uart_txd_strobe),
+		//.uart_data(uart_txd_data),
+
 		// physical interface
 		.spi_clk(spi_clk),
 		.spi_dc(spi_dc),
@@ -383,12 +432,12 @@ module top(
 	always @(posedge spi_clk)
 	begin
 		led_r <= 1;
-		led_g <= 1;
+		//led_g <= 1;
 		led_b <= 1;
 
 		if (spi_tft_strobe)
 		begin
-			led_r <= 0;
+			//led_r <= 0;
 
 			// convert to monochrome if any of the top bits
 			// of the RGB pixel are set

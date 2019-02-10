@@ -73,7 +73,7 @@ module spi_display(
 	);
 
 	reg [7:0] cmd;
-	reg [2:0] cmd_bytes;
+	reg [4:0] bytes;
 
 	reg [WIDTH-1:0] x_pos;
 	reg [WIDTH-1:0] y_pos;
@@ -81,7 +81,6 @@ module spi_display(
 	reg [WIDTH-1:0] y_end = 768-1;
 	reg [WIDTH-1:0] x_start = 0;
 	reg [WIDTH-1:0] y_start = 0;
-	reg byte;
 
 	always @(posedge spi_clk or posedge spi_cs)
 	begin
@@ -91,7 +90,7 @@ module spi_display(
 
 		if (spi_cs) begin
 			// no longer selected, reset our state
-			byte <= 0;
+			bytes <= 0;
 		end else
 		if (!rx_strobe) begin
 			// nothing to do, wait for an incoming byte
@@ -99,58 +98,63 @@ module spi_display(
 		if (!spi_dc) begin
 			// start of a new command, store the command id
 			cmd <= rx_data;
-			cmd_bytes <= 0;
+			bytes <= 0;
 			uart_strobe <= 1;
 			uart_data <= rx_data;
-		end else
-		case(cmd)
-		8'h2B: begin
-			// row address
-			case(bytes)
-			0: x_start[WIDTH-1:8] <= rx_data;
-			1: x_start[7:0] <= rx_data;
-			2: x_end[7:0] <= rx_data;
-			3: begin
-				x_end[WIDTH-1:8] <= rx_data;
-				x_pos <= x_start;
-			end
-			endcase
-		end
-		8'h2A: begin
-			// column address
-			case(bytes)
-			0: y_start[WIDTH-1:8] <= rx_data;
-			1: y_start[7:0] <= rx_data;
-			2: y_end[WIDTH-1:8] <= rx_data;
-			3: begin
-				y_end[7:0] <= rx_data;
-				y_pos <= y_start;
-			end
-			endcase
-		end
-		8'h2C: begin
-			// write memory command
-			if (bytes[0] == 0)
-				pixels[15:8] <= rx_data;
-			else begin
-				pixels[7:0] <= rx_data;
-				strobe <= 1;
-				x <= x_pos;
-
-				if (x_pos != x_end) begin
-					// same line in the write region
-					x_pos <= x_pos + 1;
-				end else begin
-					// wrap the write region
+		end else begin
+			bytes <= bytes + 1;
+			case(cmd)
+			8'h2A: begin
+				// row address
+				case(bytes)
+				0: x_start[WIDTH-1:8] <= rx_data;
+				1: x_start[7:0] <= rx_data;
+				2: x_end[WIDTH-1:0] <= rx_data;
+				3: begin
+					x_end[7:0] <= rx_data;
 					x_pos <= x_start;
-					if (y != y_end)
-						y <= y + 1;
-					else
-						y <= y_start;
+				end
+				endcase
+			end
+			8'h2B: begin
+				// column address
+				case(bytes)
+				0: y_start[WIDTH-1:8] <= rx_data;
+				1: y_start[7:0] <= rx_data;
+				2: y_end[WIDTH-1:8] <= rx_data;
+				3: begin
+					y_end[7:0] <= rx_data;
+					y_pos <= y_start;
+				end
+				endcase
+			end
+			8'h2C: begin
+				// write memory command
+				if (bytes[0] == 0) begin
+					pixels[15:8] <= rx_data;
+					debug <= 0;
+				end else begin
+					debug <= 1;
+					pixels[7:0] <= rx_data;
+					strobe <= 1;
+					x <= x_pos;
+					y <= y_pos;
+
+					if (x_pos != x_end) begin
+						// same line in the write region
+						x_pos <= x_pos + 1;
+					end else begin
+						// wrap the write region
+						x_pos <= x_start;
+						if (y_pos != y_end)
+							y_pos <= y_pos + 1;
+						else
+							y_pos <= y_start;
+					end
 				end
 			end
+			endcase
 		end
-		endcase
 	end
 
 endmodule
