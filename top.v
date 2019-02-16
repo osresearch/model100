@@ -13,6 +13,15 @@ module top(
 	output led_g,
 	output led_b,
 
+	// pi serial console
+	output gpio_48,
+	input gpio_3,
+
+	// contrast and bias voltage
+	output gpio_28, // negative voltage
+	output gpio_38, // contrast voltage
+	output gpio_42, // buzzer
+
 	// LCD data and keyboard rows are shared
 	inout gpio_37,
 	inout gpio_31,
@@ -23,35 +32,30 @@ module top(
 	inout gpio_25,
 	inout gpio_23,
 
+	// LCD select and keyboard columns
+	output gpio_4, // 9
+	output gpio_44, // 8
+	output gpio_6, // 7
+	output gpio_9, // 6
+	output gpio_11, // 5
+	output gpio_18, // 4
+	output gpio_19, // 3
+	output gpio_13, // 2
+	output gpio_21, // 1
+	output gpio_12, // 0
+
+	// LCD control
+	output gpio_36,
+	output gpio_43,
+	output gpio_34,
+
 	// LCD control signals
-	output gpio_28,
-	output gpio_4,
-	output gpio_44,
-	output gpio_6,
-	output gpio_9,
-	output gpio_11,
-	output gpio_18,
-	output gpio_19,
-	output gpio_13,
-	output gpio_21,
-	output gpio_12,
-	//output gpio_3, // LCD
-	output gpio_48,
-	output gpio_45,
-	//output gpio_47, // LCD
-	output gpio_46,
 
 	// spi display from the pi (should be the keyboard)
-	input gpio_34,
-	input gpio_43,
-	input gpio_36,
-	input gpio_42,
-	input gpio_38,
-
-	// for the keyboard colums, eventually
-	output gpio_2,
-	output gpio_47,
-	output gpio_3
+	input gpio_2,
+	input gpio_46,
+	input gpio_47,
+	input gpio_45
 );
 
 	wire clk_48mhz;
@@ -119,23 +123,23 @@ module top(
 
 	// pinout on the cable is 4, 3, 9, 2, 8, 1, 7, 0, 6, 5
 	wire [9:0] lcd_cs = {
-		gpio_13, // 9
-		gpio_18, // 8
-		gpio_9, // 7
-		gpio_44, // 6
-		gpio_4, // 5
-		gpio_12, // 4
-		gpio_21, // 3
-		gpio_19, // 2
-		gpio_11, // 1
-		gpio_6 // 0
+		gpio_4, // 9
+		gpio_44, // 8
+		gpio_6, // 7
+		gpio_9, // 6
+		gpio_11, // 5
+		gpio_18, // 4
+		gpio_19, // 3
+		gpio_13, // 2
+		gpio_21, // 1
+		gpio_12 // 0
 	};
 
 	wire lcd_reset; // = gpio_3; // can be ignored, pull high
-	wire lcd_cs1 = gpio_48;
-	wire lcd_enable = gpio_45;
+	wire lcd_cs1 = gpio_36;
+	wire lcd_enable = gpio_43;
 	wire lcd_rw; // = gpio_47; // can be ignored, pull low
-	wire lcd_di = gpio_46;
+	wire lcd_di = gpio_34;
 
 	lcd modell100_lcd(
 		.clk(clk),
@@ -154,17 +158,8 @@ module top(
 		.reset_pin(lcd_reset)
 	);
 
-	reg [28:0] dim;
+	reg [31:0] dim;
 	always @(posedge clk) dim <= dim + 1;
-
-	// generate a 1/4 duty cycle wave for the
-	// negative voltage charge pump circuit
-	pwm negative_charge_pump(
-		.clk(clk),
-		//.duty(dim[28:21]),
-		.duty(128),
-		.out(gpio_28)
-	);
 
 /*
 	// contrast display at 1/2 duty cycle
@@ -257,16 +252,8 @@ module top(
 
 	reg lcd_output = 1;
 	wire [7:0] key_row;
-	wire [7:0] key_col_pin = {
-		gpio_34,
-		gpio_43,
-		gpio_36,
-		gpio_42,
-		gpio_38,
-		gpio_2,
-		gpio_47,
-		gpio_3
-	};
+	wire [7:0] key_col_pin = lcd_cs[7:0];
+
 	SB_IO #(
 		.PIN_TYPE(6'b1010_01), // tristable
 		.PULLUP(1'b 1)
@@ -363,10 +350,13 @@ module top(
 	wire [63:0] spi_framebuffer_col = framebuffer[128];
 	wire spi_frame_buffer_pixel = spi_framebuffer_col[spi_tft_y[5:0]];
 
-	wire spi_dc = gpio_43;
-	wire spi_di = gpio_36;
-	wire spi_clk = gpio_42;
-	wire spi_cs = gpio_38;
+	wire spi_dc = gpio_2;
+	wire spi_clk = gpio_46;
+	wire spi_cs = gpio_47;
+	wire spi_di = gpio_45;
+
+	wire serial_tx = gpio_48;
+	wire serial_rx = gpio_3;
 
 	wire [16-1:0] x_end;
 	wire [16-1:0] y_end;
@@ -447,4 +437,23 @@ module top(
 		end
 	end
 
+	// generate a 1/4 duty cycle wave for the
+	// negative voltage charge pump circuit
+	pwm negative_charge_pump(
+		.clk(clk),
+		//.duty(dim[28:21]),
+		.duty(200),
+		.out(gpio_28)
+	);
+
+	// contrast display at lowduty cycle
+/*
+	pwm contrast(
+		.clk(clk),
+		.duty(dim[30:23]),
+		//.duty(200),
+		.out(gpio_38)
+	);
+*/
+	assign gpio_38 = 0;
 endmodule
