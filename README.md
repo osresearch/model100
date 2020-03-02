@@ -1,3 +1,5 @@
+![TRS-80 Model 100 "running" `xeyes`](images/xeyes.jpg)
+
 TRS-80 Model iCE100
 ====
 
@@ -14,6 +16,8 @@ each with its own select line and shared control lines.
 
 The LCD requires a charge pump to generate the -5V required for the bias
 voltage.  This is generated with a duty cycle controlled PWM output.
+
+![LCD pinout](images/model100-lcd-pinout.png)
 
 LCD connector HU-30P-2G-L13
 
@@ -84,6 +88,8 @@ Driving with a 5V PWM produces  -3 V, which gives better contrast.
 
 Image format
 ===
+![Splash screen at bootup](images/splashscreen.jpg)
+
     convert -resize !240x64 -depth 1 -monochrome -rotate 90 \
 	logo.png logo.gray
     xxd -g8 -c8 -p logo.gray > fb.hex
@@ -91,6 +97,8 @@ Image format
 
 Keyboard
 ====
+
+![Keyboard matrix](images/model100-keyboard-pinout.png)
 
 The 8x9 keyboard matrix has diodes on every key so it is possible to
 identify any number of pressed keys.  However, due to the direction of
